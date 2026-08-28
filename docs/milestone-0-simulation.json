@@ -1,0 +1,21 @@
+{
+  "games": 1000,
+  "seedPrefix": "milestone-0",
+  "firmWins": {
+    "P1": 234,
+    "D1": 246,
+    "P2": 264,
+    "D2": 256
+  },
+  "sideWins": {
+    "plaintiff": 498,
+    "defense": 502
+  },
+  "leadRate": 0.4997916666666667,
+  "coCounselRate": 0.5002083333333334,
+  "sideTieRate": 0.1261875,
+  "internalTieRate": 0.101125,
+  "highestScoreEliminatedRate": 0.105,
+  "closingChangedSideRate": 0.136,
+  "closingChangedFirmRate": 0.279
+}

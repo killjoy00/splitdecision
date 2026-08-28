@@ -1,0 +1,25 @@
+{
+  "name": "split-decision",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run build:engine && tsc -p tsconfig.app.json && vite build",
+    "build:engine": "tsc -p tsconfig.engine.json",
+    "test": "npm run build:engine && node --test tests/*.test.mjs",
+    "simulate": "npm run build:engine && node scripts/simulate.mjs",
+    "check": "npm test && npm run simulate -- --games 1000 --seed demo"
+  },
+  "dependencies": {
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7",
+    "@vitejs/plugin-react": "^5.0.2",
+    "typescript": "^5.8.3",
+    "vite": "^7.1.3"
+  }
+}
