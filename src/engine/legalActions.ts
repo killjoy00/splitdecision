@@ -10,6 +10,11 @@ import type {
 
 const CARD_BY_ID = new Map(GAME_DATA.caseCards.map((card) => [card.id, card]));
 
+function canPlaceInIssue(state: GameState, issueId: (typeof GAME_DATA.issues)[number]['id']): boolean {
+  return state.rules.allowPlacementAfterSecondHearing
+    || state.issues[issueId].normalHearingsResolved < 2;
+}
+
 export function getPendingActors(state: GameState): SeatId[] {
   if (state.phase === 'round_split_commit') {
     return (['plaintiff', 'defense'] as const)
@@ -55,11 +60,13 @@ export function getLegalActions(state: GameState, actor: SeatId): GameAction[] {
     if (card.form === 'focus') {
       const chosenIssue = card.issues[0];
       if (!chosenIssue) throw new Error(`Focus card ${card.id} has no Issue`);
+      if (!canPlaceInIssue(state, chosenIssue)) continue;
       for (const focusAction of ['lead', 'co_counsel'] as CaseActionType[]) {
         actions.push({ type: 'play_docket_card', actor, slot, chosenIssue, focusAction });
       }
     } else {
       for (const chosenIssue of card.issues) {
+        if (!canPlaceInIssue(state, chosenIssue)) continue;
         actions.push({ type: 'play_docket_card', actor, slot, chosenIssue });
       }
     }

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  assertGameInvariants,
   createGame,
   hashGameState,
 } from '../dist/index.js';
@@ -33,4 +34,15 @@ test('Milestone 0 rejects enabled Specialties instead of applying partial rules'
     () => createGame({ seed: 'specialty', rules: { specialtiesEnabled: true } }),
     /not enabled|not implemented/i,
   );
+});
+
+test('invariants reject noncanonical decks and incomplete Hearing schedules', () => {
+  const badDeck = createGame({ seed: 'bad-deck' });
+  badDeck.caseDeck[badDeck.caseDeck.length - 1] = 'C99';
+  assert.throws(() => assertGameInvariants(badDeck), /canonical cards/);
+
+  const badSchedule = createGame({ seed: 'bad-schedule' });
+  badSchedule.hearingSchedule[0][0] = badSchedule.hearingSchedule[0][1];
+  badSchedule.hearingSchedule[3][0] = badSchedule.hearingSchedule[0][0];
+  assert.throws(() => assertGameInvariants(badSchedule), /each Issue once/);
 });

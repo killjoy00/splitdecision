@@ -14,6 +14,10 @@ function invariant(condition: unknown, message: string): asserts condition {
 
 export function assertGameInvariants(state: GameState): void {
   invariant(state.hearingSchedule.length === 6, 'six Hearing rounds are required');
+  const firstCycleIssues = state.hearingSchedule.slice(0, 3).flat();
+  invariant(firstCycleIssues.length === 6, 'first Hearing cycle must contain six Issues');
+  invariant(new Set(firstCycleIssues).size === 6, 'first Hearing cycle must contain each Issue once');
+  invariant(ISSUE_IDS.every((issueId) => firstCycleIssues.includes(issueId)), 'first Hearing cycle is missing an Issue');
   for (let index = 0; index < 3; index += 1) {
     invariant(
       JSON.stringify(state.hearingSchedule[index]) === JSON.stringify(state.hearingSchedule[index + 3]),
@@ -23,9 +27,21 @@ export function assertGameInvariants(state: GameState): void {
 
   invariant(state.caseDeck.length === GAME_DATA.caseCards.length, 'Case deck size must match canonical data');
   invariant(new Set(state.caseDeck).size === state.caseDeck.length, 'Case deck cards must be unique');
+  const canonicalCardIds = new Set(GAME_DATA.caseCards.map((card) => card.id));
+  invariant(state.caseDeck.every((cardId) => canonicalCardIds.has(cardId)), 'Case deck must contain only canonical cards');
   invariant(state.caseDeckIndex >= 6 && state.caseDeckIndex <= 36, 'Case deck index must be within 6-36');
   invariant(state.docket.length === 6, 'current Docket must contain six cards');
   invariant(new Set(state.docket.map((card) => card.slot)).size === 6, 'Docket slots must be unique');
+  invariant(SLOTS.every((slot) => state.docket.some((card) => card.slot === slot)), 'Docket must use slots 1-6');
+  const docketCardIds = [...state.docket]
+    .sort((left, right) => left.slot - right.slot)
+    .map((card) => card.cardId);
+  invariant(new Set(docketCardIds).size === 6, 'current Docket cards must be unique');
+  invariant(
+    JSON.stringify(docketCardIds)
+      === JSON.stringify(state.caseDeck.slice(state.caseDeckIndex - state.rules.docketSize, state.caseDeckIndex)),
+    'current Docket must match the most recently drawn Case cards',
+  );
 
   for (const seat of SEAT_ORDER) {
     const player = state.players[seat];
@@ -65,6 +81,18 @@ export function assertGameInvariants(state: GameState): void {
       && state.actionsResolvedThisRound >= 0
       && state.actionsResolvedThisRound <= 12,
     'round action count must be 0-12',
+  );
+  const resolvedDocketActions = state.docket.reduce(
+    (total, card) => total + SIDE_IDS.filter((side) => card.usedBy[side] !== null).length,
+    0,
+  );
+  invariant(
+    state.actionsResolvedThisRound === resolvedDocketActions,
+    'round action count must match resolved Docket uses',
+  );
+  invariant(
+    state.phase === 'round_argue' ? state.activeSeat !== null : state.activeSeat === null,
+    'active seat must exist only while arguing the case',
   );
 
   const allClosingIssues = [

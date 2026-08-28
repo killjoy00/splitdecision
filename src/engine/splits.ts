@@ -15,9 +15,12 @@ export function splitKey(split: Split): string {
   return `${canonical[0].join('')}-${canonical[1].join('')}`;
 }
 
-export function isValidThreeThreeSplit(split: Split): boolean {
+export function isValidThreeThreeSplit(split: unknown): split is Split {
+  if (!Array.isArray(split) || split.length !== 2) return false;
+  if (!Array.isArray(split[0]) || !Array.isArray(split[1])) return false;
   if (split[0].length !== 3 || split[1].length !== 3) return false;
   const values = [...split[0], ...split[1]];
+  if (!values.every((value) => Number.isInteger(value))) return false;
   const unique = new Set(values);
   return unique.size === 6 && SLOTS.every((slot) => unique.has(slot));
 }
