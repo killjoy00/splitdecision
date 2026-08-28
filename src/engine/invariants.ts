@@ -1,0 +1,78 @@
+import { GAME_DATA } from '../data/gameData.js';
+import { isValidThreeThreeSplit } from './splits.js';
+import {
+  ISSUE_IDS,
+  SEAT_ORDER,
+  SIDE_IDS,
+  SLOTS,
+  type GameState,
+} from './types.js';
+
+function invariant(condition: unknown, message: string): asserts condition {
+  if (!condition) throw new Error(`Invariant failed: ${message}`);
+}
+
+export function assertGameInvariants(state: GameState): void {
+  invariant(state.hearingSchedule.length === 6, 'six Hearing rounds are required');
+  for (let index = 0; index < 3; index += 1) {
+    invariant(
+      JSON.stringify(state.hearingSchedule[index]) === JSON.stringify(state.hearingSchedule[index + 3]),
+      `Hearing Round ${index + 4} must mirror Round ${index + 1}`,
+    );
+  }
+
+  invariant(state.caseDeck.length === GAME_DATA.caseCards.length, 'Case deck size must match canonical data');
+  invariant(new Set(state.caseDeck).size === state.caseDeck.length, 'Case deck cards must be unique');
+  invariant(state.caseDeckIndex >= 6 && state.caseDeckIndex <= 36, 'Case deck index must be within 6-36');
+  invariant(state.docket.length === 6, 'current Docket must contain six cards');
+  invariant(new Set(state.docket.map((card) => card.slot)).size === 6, 'Docket slots must be unique');
+
+  for (const seat of SEAT_ORDER) {
+    const player = state.players[seat];
+    invariant(player.seatId === seat, `${seat} identity mismatch`);
+    invariant(state.players[player.partnerSeatId].partnerSeatId === seat, `${seat} partner mapping is not reciprocal`);
+    invariant(Number.isInteger(player.reputation) && player.reputation >= 0, `${seat} reputation must be nonnegative`);
+  }
+
+  for (const issueId of ISSUE_IDS) {
+    const issue = state.issues[issueId];
+    invariant(issue.normalHearingsResolved >= 0 && issue.normalHearingsResolved <= 2, `${issueId} Hearing count invalid`);
+    for (const seat of SEAT_ORDER) {
+      invariant(Number.isInteger(issue.firmMarkers[seat]) && issue.firmMarkers[seat] >= 0, `${issueId}/${seat} marker count invalid`);
+    }
+    for (const side of SIDE_IDS) {
+      invariant(Number.isInteger(issue.jointWork[side]) && issue.jointWork[side] >= 0, `${issueId}/${side} Joint Work invalid`);
+    }
+  }
+
+  for (const side of SIDE_IDS) {
+    const brief = state.briefs[side];
+    if (brief.submittedSplit !== null) {
+      invariant(isValidThreeThreeSplit(brief.submittedSplit), `${side} split must cover slots 1-6 in groups of three`);
+    }
+    if (state.phase === 'round_argue') {
+      const dividerSlots = brief.assignments[brief.divider];
+      const chooserSlots = brief.assignments[brief.chooser];
+      invariant(dividerSlots?.length === 3, `${side} divider must receive three slots`);
+      invariant(chooserSlots?.length === 3, `${side} chooser must receive three slots`);
+      const assigned = new Set([...(dividerSlots ?? []), ...(chooserSlots ?? [])]);
+      invariant(SLOTS.every((slot) => assigned.has(slot)), `${side} assignments must cover all six slots`);
+    }
+  }
+
+  invariant(
+    Number.isInteger(state.actionsResolvedThisRound)
+      && state.actionsResolvedThisRound >= 0
+      && state.actionsResolvedThisRound <= 12,
+    'round action count must be 0-12',
+  );
+
+  const allClosingIssues = [
+    ...SEAT_ORDER.map((seat) => state.players[seat].closingArgumentIssue),
+    ...state.closingUndealt,
+  ];
+  invariant(allClosingIssues.length === 6, 'six Closing Argument Issues must exist');
+  invariant(new Set(allClosingIssues).size === 6, 'Closing Argument Issues must be unique');
+
+  if (state.phase === 'complete') invariant(state.verdict !== null, 'complete game must have a verdict');
+}
