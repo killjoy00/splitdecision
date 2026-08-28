@@ -5,9 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:remote": "wrangler dev --port 8787",
     "build": "npm run build:engine && tsc -p tsconfig.app.json && vite build",
     "build:engine": "tsc -p tsconfig.engine.json",
-    "test": "npm run build:engine && node --test tests/*.test.mjs",
+    "build:remote": "tsc -p tsconfig.worker.json && wrangler deploy --dry-run",
+    "deploy:remote": "wrangler deploy --minify",
+    "types:remote": "wrangler types --include-runtime false --check",
+    "test": "npm run test:engine && npm run test:remote",
+    "test:engine": "npm run build:engine && node --test tests/*.test.mjs",
+    "test:remote": "vitest run",
     "simulate": "npm run build:engine && node scripts/simulate.mjs",
     "check": "npm test && npm run simulate -- --games 1000 --seed demo"
   },
@@ -16,10 +22,15 @@
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.1.1",
+    "@cloudflare/workers-types": "^5.20260827.1",
+    "@types/node": "^26.4.0",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.2",
     "typescript": "^5.8.3",
-    "vite": "^7.1.3"
+    "vite": "^7.1.3",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.127.0"
   }
 }
