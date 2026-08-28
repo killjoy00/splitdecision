@@ -12,7 +12,9 @@ import {
 import { resolveVerdict } from './verdict.js';
 import {
   ISSUE_IDS,
+  SEAT_ORDER,
   SIDE_IDS,
+  SLOTS,
   type ApplyActionResult,
   type CaseActionType,
   type GameAction,
@@ -30,6 +32,59 @@ function cloneState(state: GameState): GameState {
 
 function fail(code: string, message: string): ApplyActionResult {
   return { ok: false, error: { code, message } };
+}
+
+function parseAction(value: unknown): { action: GameAction } | { error: string } {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return { error: 'Action must be an object' };
+  }
+
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.actor !== 'string'
+      || !SEAT_ORDER.includes(candidate.actor as SeatId)) {
+    return { error: 'Action actor must be a valid seat' };
+  }
+  const actor = candidate.actor as SeatId;
+
+  if (candidate.type === 'commit_split') {
+    if (!isValidThreeThreeSplit(candidate.groups)) {
+      return { error: 'commit_split requires two disjoint groups of three covering slots 1-6' };
+    }
+    return { action: { type: 'commit_split', actor, groups: candidate.groups } };
+  }
+
+  if (candidate.type === 'choose_brief') {
+    if (candidate.briefIndex !== 0 && candidate.briefIndex !== 1) {
+      return { error: 'choose_brief requires briefIndex 0 or 1' };
+    }
+    return { action: { type: 'choose_brief', actor, briefIndex: candidate.briefIndex } };
+  }
+
+  if (candidate.type === 'play_docket_card') {
+    if (!SLOTS.includes(candidate.slot as (typeof SLOTS)[number])) {
+      return { error: 'play_docket_card requires a valid Docket slot' };
+    }
+    if (!ISSUE_IDS.includes(candidate.chosenIssue as IssueId)) {
+      return { error: 'play_docket_card requires a valid Issue' };
+    }
+    if (candidate.focusAction !== undefined
+        && candidate.focusAction !== 'lead'
+        && candidate.focusAction !== 'co_counsel') {
+      return { error: 'focusAction must be Lead or Co-Counsel when supplied' };
+    }
+    const focusAction = candidate.focusAction as CaseActionType | undefined;
+    return {
+      action: {
+        type: 'play_docket_card',
+        actor,
+        slot: candidate.slot as (typeof SLOTS)[number],
+        chosenIssue: candidate.chosenIssue as IssueId,
+        ...(focusAction === undefined ? {} : { focusAction }),
+      },
+    };
+  }
+
+  return { error: 'Unknown action type' };
 }
 
 function bothSidesSubmittedSplits(state: GameState): boolean {
@@ -138,7 +193,10 @@ function validateCardResolution(
   return { side, actionType, chosenIssue: action.chosenIssue };
 }
 
-export function applyAction(state: GameState, action: GameAction): ApplyActionResult {
+export function applyAction(state: GameState, value: unknown): ApplyActionResult {
+  const parsed = parseAction(value);
+  if ('error' in parsed) return fail('invalid_action', parsed.error);
+  const { action } = parsed;
   const next = cloneState(state);
 
   try {

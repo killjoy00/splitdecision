@@ -96,8 +96,14 @@ test('private Closing Argument and committed split information is redacted', () 
   const chooserView = getPlayerView(state, chooser);
   assert.ok(dividerView.briefs.plaintiff.submittedSplit);
   assert.equal(chooserView.briefs.plaintiff.submittedSplit, null);
+  assert.equal(chooserView.seed, null);
+  assert.deepEqual(chooserView.caseDeck, state.caseDeck.slice(0, state.caseDeckIndex));
+  assert.ok(chooserView.caseDeck.length < state.caseDeck.length);
   assert.deepEqual(chooserView.closingUndealt, []);
   assert.deepEqual(chooserView.actionHistory, []);
+  const setupEvent = chooserView.eventLog.find((event) => event.type === 'setup_complete');
+  assert.ok(setupEvent);
+  assert.equal(Object.hasOwn(setupEvent.payload, 'seed'), false);
 
   for (const [seat, player] of Object.entries(chooserView.players)) {
     if (seat === chooser) {
@@ -115,7 +121,57 @@ test('public hashes do not reveal the assignment of secret Closing Arguments', (
   const temporary = second.players.P1.closingArgumentIssue;
   second.players.P1.closingArgumentIssue = second.players.D1.closingArgumentIssue;
   second.players.D1.closingArgumentIssue = temporary;
+  second.seed = 'different-private-seed';
+  const firstFutureCard = second.caseDeckIndex;
+  const secondFutureCard = firstFutureCard + 1;
+  [second.caseDeck[firstFutureCard], second.caseDeck[secondFutureCard]] = [
+    second.caseDeck[secondFutureCard],
+    second.caseDeck[firstFutureCard],
+  ];
 
   assert.notEqual(hashGameState(first), hashGameState(second));
   assert.equal(hashPublicGameState(first), hashPublicGameState(second));
+});
+
+test('malformed actions are rejected without mutating canonical state', () => {
+  const state = createGame({ seed: 'invalid-actions' });
+  const before = hashGameState(state);
+  const invalidActions = [
+    null,
+    { type: 'unknown', actor: 'P1' },
+    { type: 'commit_split', actor: 'X1', groups: [[1, 2, 3], [4, 5, 6]] },
+    { type: 'commit_split', actor: state.briefs.plaintiff.divider, groups: [[1, 2], [3, 4, 5, 6]] },
+    { type: 'choose_brief', actor: state.briefs.plaintiff.chooser, briefIndex: 2 },
+  ];
+
+  for (const action of invalidActions) {
+    const result = applyAction(state, action);
+    assert.equal(result.ok, false);
+    assert.equal(result.error.code, 'invalid_action');
+    assert.equal(hashGameState(state), before);
+  }
+});
+
+test('legal actions exclude Issues closed by the optional placement rule', () => {
+  const state = advanceToArgue('closed-issue');
+  const actor = state.activeSeat;
+  assert.ok(actor);
+  const action = getLegalActions(state, actor).find(
+    (candidate) => candidate.type === 'play_docket_card',
+  );
+  assert.ok(action);
+
+  state.rules.allowPlacementAfterSecondHearing = false;
+  state.issues[action.chosenIssue].normalHearingsResolved = 2;
+
+  assert.equal(
+    getLegalActions(state, actor).some(
+      (candidate) => candidate.type === 'play_docket_card'
+        && candidate.chosenIssue === action.chosenIssue,
+    ),
+    false,
+  );
+  const result = applyAction(state, action);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'issue_closed');
 });

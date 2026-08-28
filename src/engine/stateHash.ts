@@ -29,6 +29,8 @@ export function hashGameState(state: GameState): string {
 
 export function hashPublicGameState(state: GameState): string {
   const clone = JSON.parse(JSON.stringify(state)) as GameState;
+  clone.seed = '';
+  clone.caseDeck = clone.caseDeck.slice(0, clone.caseDeckIndex);
   clone.eventLog = [];
   clone.actionHistory = [];
 
