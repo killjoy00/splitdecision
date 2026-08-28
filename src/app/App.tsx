@@ -52,7 +52,7 @@ const IS_LOCAL_BROWSER = window.location.hostname === 'localhost'
   || window.location.hostname === '127.0.0.1';
 const REMOTE_API_URL = (
   import.meta.env.VITE_REMOTE_API_URL
-  || (IS_LOCAL_BROWSER ? 'http://localhost:8787' : 'https://api.splitdecision.planitnow.us')
+  || (IS_LOCAL_BROWSER ? 'http://localhost:8787' : 'https://splitdecision-api.planitnow.us')
 ).replace(/\/$/, '');
 const CARD_BY_ID = new Map(GAME_DATA.caseCards.map((card) => [card.id, card]));
 const ISSUE_BY_ID = new Map(GAME_DATA.issues.map((issue) => [issue.id, issue]));

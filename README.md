@@ -47,13 +47,13 @@ npm run dev
 npm run dev:remote
 ```
 
-Then open the Vite URL on each device. Localhost origins automatically use `http://localhost:8787`; production uses `https://api.splitdecision.planitnow.us`.
+Then open the Vite URL on each device. Localhost origins automatically use `http://localhost:8787`; production uses `https://splitdecision-api.planitnow.us`.
 
 ## Deploy
 
 Pushes to `main` deploy `web-dist` through GitHub Pages using `.github/workflows/deploy-pages.yml`. In repository **Settings → Pages**, select **GitHub Actions** as the source. The production custom domain is `splitdecision.planitnow.us`, so Vite's default `/` base path is intentional.
 
-Remote play runs separately on Cloudflare Workers and Durable Objects. Its deployment is deliberately manual: add the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets, run the **Deploy remote play service** workflow, and attach `api.splitdecision.planitnow.us` as the Worker's custom domain. See [`docs/REMOTE_PLAY.md`](docs/REMOTE_PLAY.md) for the exact setup and recovery steps.
+Remote play runs separately on Cloudflare Workers and Durable Objects. Its deployment is deliberately manual: add the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets, then run the **Deploy remote play service** workflow. Wrangler attaches the first-level custom domain `splitdecision-api.planitnow.us` and Cloudflare creates its DNS record and certificate. See [`docs/REMOTE_PLAY.md`](docs/REMOTE_PLAY.md) for the exact setup and recovery steps.
 
 ## Architecture
 
