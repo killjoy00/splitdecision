@@ -2,7 +2,7 @@
 
 Remote games use one Cloudflare Durable Object per six-character room code. The object is the authoritative game server: it authenticates each seat, keeps Closing Arguments and unsubmitted briefs private, validates actions with the same engine used by local play, runs Easy bots, and expires inactive rooms after 30 days.
 
-The static React app remains on GitHub Pages at `splitdecision.planitnow.us`. The room API is a separate Worker at `api.splitdecision.planitnow.us`.
+The static React app remains on GitHub Pages at `splitdecision.planitnow.us`. The room API is a separate Worker at `splitdecision-api.planitnow.us`.
 
 ## One-time Cloudflare and GitHub setup
 
@@ -13,11 +13,11 @@ The static React app remains on GitHub Pages at `splitdecision.planitnow.us`. Th
 5. Create a repository secret named `CLOUDFLARE_API_TOKEN` containing the token.
 6. Create a repository secret named `CLOUDFLARE_ACCOUNT_ID` containing the account ID.
 7. Open **Actions → Deploy remote play service → Run workflow → Run workflow**. The first deployment creates the Worker, its Durable Object namespace, and the SQLite-backed `GameRoom` class migration.
-8. In Cloudflare, open **Workers & Pages → split-decision-remote → Settings → Domains & Routes → Add → Custom Domain**.
-9. Enter `api.splitdecision.planitnow.us` and confirm. Let Cloudflare create the DNS record and certificate. Keep this Worker hostname proxied through Cloudflare.
+8. The deployment reads `wrangler.jsonc` and attaches `splitdecision-api.planitnow.us` as the Worker's Custom Domain. Cloudflare creates the DNS record and certificate automatically; do not also add a Worker Route.
+9. In Cloudflare, open **Workers & Pages → split-decision-remote → Domains** and wait for `splitdecision-api.planitnow.us` to become active.
 10. Visit `https://splitdecision.planitnow.us`, choose **Remote room**, create a room, and open the invite link in a second browser or device.
 
-The GitHub Pages hostname `splitdecision.planitnow.us` should keep the DNS configuration required by GitHub Pages. The separate `api` hostname terminates at Cloudflare and should be proxied. They do not need to share an origin IP.
+The GitHub Pages hostname `splitdecision.planitnow.us` should keep the DNS configuration required by GitHub Pages. The separate `splitdecision-api` hostname terminates at Cloudflare and should be proxied. They do not need to share an origin IP.
 
 ## Local development
 

@@ -14,7 +14,7 @@ jobs:
   deploy:
     environment:
       name: remote-production
-      url: https://api.splitdecision.planitnow.us
+      url: https://splitdecision-api.planitnow.us
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository

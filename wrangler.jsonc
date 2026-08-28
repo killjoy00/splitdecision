@@ -21,6 +21,12 @@
   "vars": {
     "FRONTEND_ORIGIN": "https://splitdecision.planitnow.us"
   },
+  "routes": [
+    {
+      "pattern": "splitdecision-api.planitnow.us",
+      "custom_domain": true
+    }
+  ],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
