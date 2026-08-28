@@ -107,6 +107,48 @@ label { display: grid; gap: 7px; color: #4e5968; font-size: 0.78rem; font-weight
 .setup-footer { display: flex; justify-content: space-between; gap: 24px; align-items: center; margin-top: 28px; }
 .setup-footer p { max-width: 620px; margin: 0; color: var(--muted); line-height: 1.55; }
 
+/* Play mode and remote rooms */
+.play-mode-card { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-top: 24px; padding: 24px 28px; border: 1px solid var(--line); border-radius: 20px; background: rgba(255,253,248,0.94); box-shadow: 0 10px 28px rgba(23,35,56,0.055); }
+.play-mode-card h2 { margin: 0; font-size: 1.6rem; }
+.play-mode-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: min(620px, 100%); }
+.play-mode-option { display: grid; gap: 4px; min-height: 74px; padding: 13px 15px; text-align: left; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.play-mode-option:hover { border-color: var(--gold); background: #fffaf0; }
+.play-mode-option span { color: var(--muted); font-size: 0.75rem; line-height: 1.35; }
+.play-mode-active { border: 2px solid var(--gold); background: #fff9e9; }
+
+.remote-hero, .remote-lobby-header { display: flex; justify-content: space-between; align-items: center; gap: 30px; padding: clamp(28px, 5vw, 54px); border-radius: 26px; color: #f7f0df; background: linear-gradient(130deg, #13223a, #244263); box-shadow: 0 24px 58px rgba(23,35,56,0.2); }
+.remote-hero h1, .remote-lobby-header h1 { color: #fffaf0; font-size: clamp(3rem, 8vw, 6rem); }
+.remote-hero p:last-child, .remote-lobby-header p:last-child { max-width: 720px; margin: 20px 0 0; color: #d8e0e9; font-size: 1.05rem; line-height: 1.6; }
+.remote-hero .button-quiet, .remote-lobby-header .button-quiet { color: #fff; border-color: rgba(255,255,255,0.24); background: rgba(255,255,255,0.08); }
+.remote-entry-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 20px; }
+.remote-entry-card { padding: clamp(24px, 4vw, 38px); border: 1px solid var(--line); border-radius: 20px; background: rgba(255,253,248,0.96); box-shadow: var(--shadow); }
+.remote-entry-card > p:not(.section-label) { color: var(--muted); line-height: 1.55; }
+.remote-entry-card > label { margin: 24px 0 18px; }
+.remote-entry-card > .button { width: 100%; }
+.remote-entry-heading { display: flex; justify-content: space-between; align-items: start; gap: 20px; }
+.remote-entry-error { margin: 18px 0 0; }
+.remote-seat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; margin-top: 22px; }
+.remote-seat { display: grid; grid-template-columns: 40px 1fr; gap: 5px 10px; align-items: center; min-width: 0; min-height: 112px; padding: 15px; text-align: left; border: 1px solid var(--line); border-radius: 13px; background: #fff; }
+button.remote-seat:hover:not(:disabled) { transform: translateY(-2px); border-color: var(--gold); box-shadow: 0 8px 20px rgba(23,35,56,0.09); }
+.remote-seat.side-plaintiff { background: var(--plaintiff-light); border-color: #b7d1df; }
+.remote-seat.side-defense { background: var(--defense-light); border-color: #dfc0b7; }
+.remote-seat > strong, .remote-seat > small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.remote-seat > small { grid-column: 2; color: var(--muted); font-size: 0.72rem; }
+.remote-seat > .button { grid-column: 1 / -1; width: 100%; margin-top: 8px; }
+.remote-lobby-actions { display: flex; flex-wrap: wrap; justify-content: end; gap: 10px; }
+.remote-lobby-card { margin-top: 18px; }
+.remote-start-row { display: grid; grid-template-columns: minmax(220px, 0.7fr) 1fr; gap: 22px; align-items: end; margin-top: 25px; padding-top: 24px; border-top: 1px solid var(--line); }
+.remote-start-row > div { display: flex; justify-content: end; align-items: center; gap: 18px; }
+.remote-start-row span { color: var(--muted); font-size: 0.82rem; }
+.remote-waiting-copy { display: grid; gap: 4px; margin-top: 25px; padding: 18px; border-radius: 11px; color: #5f4a1f; background: var(--gold-light); }
+.remote-waiting-copy span { font-size: 0.82rem; }
+.remote-notice { margin: 14px 0 0; padding: 12px 16px; border: 1px solid #b9d3c1; border-radius: 10px; color: #285f3d; background: #e8f5eb; font-weight: 720; }
+.remote-error { margin-top: 14px; }
+.remote-wait-panel { display: flex; flex-direction: column; align-items: center; min-height: 300px; margin-top: 18px; padding: 44px 24px; text-align: center; border: 1px solid var(--line); border-radius: 22px; background: var(--paper); box-shadow: var(--shadow); }
+.remote-wait-panel h2 { margin-bottom: 10px; }
+.remote-wait-panel > p:not(.section-label) { max-width: 560px; color: var(--muted); }
+.remote-wait-panel .thinking-dots { margin-top: 16px; }
+
 /* Shared game shell */
 .game-shell { width: min(1240px, calc(100% - 32px)); margin: 0 auto; padding: 24px 0 70px; }
 .game-header { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 24px 28px; border-radius: 20px; color: #f8f2e7; background: var(--ink); box-shadow: 0 14px 34px rgba(23,35,56,0.18); }
@@ -293,6 +335,9 @@ label { display: grid; gap: 7px; color: #4e5968; font-size: 0.78rem; font-weight
   .argument-grid { grid-template-columns: 1fr; }
   .result-row { grid-template-columns: 76px 1fr 0.8fr; }
   .result-row > span:nth-last-child(-n + 2) { display: none; }
+  .play-mode-card, .remote-hero, .remote-lobby-header { align-items: stretch; flex-direction: column; }
+  .play-mode-actions { width: 100%; }
+  .remote-seat-grid { grid-template-columns: 1fr 1fr; }
 }
 
 @media (max-width: 680px) {
@@ -332,6 +377,14 @@ label { display: grid; gap: 7px; color: #4e5968; font-size: 0.78rem; font-weight
   .result-row { grid-template-columns: 72px 1fr; }
   .result-row > span:nth-child(3) { display: none; }
   .verdict-scores { grid-template-columns: 1fr 1fr; }
+  .play-mode-card { padding: 20px 14px; }
+  .play-mode-actions, .remote-entry-grid, .remote-seat-grid, .remote-start-row { grid-template-columns: 1fr; }
+  .remote-hero, .remote-lobby-header { padding: 30px 22px; border-radius: 20px; }
+  .remote-hero h1, .remote-lobby-header h1 { font-size: 3.2rem; }
+  .remote-lobby-actions, .remote-start-row > div { align-items: stretch; flex-direction: column; }
+  .remote-lobby-actions .button, .remote-start-row .button { width: 100%; }
+  .remote-entry-card { padding: 22px 15px; }
+  .remote-entry-heading { align-items: stretch; flex-direction: column; }
 }
 
 @media (prefers-reduced-motion: reduce) {
