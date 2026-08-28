@@ -1,5 +1,16 @@
 export { GAME_DATA } from '../data/gameData.js';
-export { chooseEasyAction } from './bots.js';
+export {
+  MEDIUM_BOT_WEIGHTS,
+  chooseBotAction,
+  chooseEasyAction,
+  chooseHardAction,
+  chooseMediumAction,
+  rankBotActions,
+  scoreMediumAction,
+  type AutomatedBotLevel,
+  type BotWeights,
+  type ScoredBotAction,
+} from './bots.js';
 export { createGame } from './createGame.js';
 export { assertGameInvariants } from './invariants.js';
 export { getLegalActions, getPendingActors } from './legalActions.js';
@@ -21,7 +32,19 @@ export {
   splitKey,
 } from './splits.js';
 export { hashGameState, hashPublicGameState } from './stateHash.js';
-export { runRandomGame, simulateGames } from './simulation.js';
+export {
+  runBotGame,
+  runRandomGame,
+  simulateBotGames,
+  simulateGames,
+  simulateMatchup,
+  type BotControllers,
+  type BotGameSummary,
+  type GameplayMetrics,
+  type MatchupSummary,
+  type RandomGameSummary,
+  type SimulationSummary,
+} from './simulation.js';
 export { resolveVerdict } from './verdict.js';
 export { getPlayerView } from './visibility.js';
 export * from './types.js';

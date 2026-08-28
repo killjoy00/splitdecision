@@ -1,7 +1,7 @@
-import type { GameAction, SeatId } from '../engine/types.js';
+import type { BotLevel, GameAction, SeatId } from '../engine/types.js';
 import type { PlayerView } from '../engine/visibility.js';
 
-export type RemoteController = 'human' | 'easy';
+export type RemoteController = BotLevel;
 
 export interface RemoteSeat {
   seat: SeatId;

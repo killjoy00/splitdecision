@@ -7,13 +7,15 @@ import {
   SLOTS,
   applyAction,
   assertGameInvariants,
-  chooseEasyAction,
+  chooseBotAction,
   createGame,
   createRandom,
   getLegalActions,
   getPendingActors,
   getPlayerView,
   type DocketCardState,
+  type AutomatedBotLevel,
+  type BotLevel,
   type GameAction,
   type GameState,
   type HearingResult,
@@ -30,7 +32,7 @@ import type {
   RemoteSession,
 } from '../remote/protocol.js';
 
-type Controller = 'human' | 'easy';
+type Controller = BotLevel;
 
 interface SeatProfile {
   name: string;
@@ -163,7 +165,7 @@ export function App() {
     () => game ? getPendingActors(game)[0] ?? null : null,
     [game],
   );
-  const isBotTurn = pendingActor !== null && game?.players[pendingActor].controller === 'easy';
+  const isBotTurn = pendingActor !== null && game?.players[pendingActor].controller !== 'human';
   const playerView = useMemo(
     () => game && pendingActor && unlocked ? getPlayerView(game, pendingActor) : null,
     [game, pendingActor, unlocked],
@@ -189,7 +191,8 @@ export function App() {
     const timer = window.setTimeout(() => {
       const random = createRandom(`${game.seed}:browser-bot:${game.actionHistory.length}`);
       try {
-        const action = chooseEasyAction(game, pendingActor, random);
+        const level = game.players[pendingActor].controller as AutomatedBotLevel;
+        const action = chooseBotAction(game, pendingActor, level, random);
         const result = applyAction(game, action);
         if (!result.ok) {
           setError(result.error.message);
@@ -409,6 +412,8 @@ function SetupScreen({
                     <select value={profiles[seat].controller} onChange={(event) => onProfileChange(seat, { controller: event.target.value as Controller })}>
                       <option value="human">Human</option>
                       <option value="easy">Easy bot</option>
+                      <option value="medium">Medium bot</option>
+                      <option value="hard">Hard bot</option>
                     </select>
                   </label>
                 </div>
@@ -450,7 +455,7 @@ function BotTurnPanel({ actor, profiles, error }: { actor: SeatId; profiles: Sea
   return (
     <section className="handoff-panel bot-panel" aria-live="polite">
       <div className={`handoff-seal side-${SEAT_META[actor].side}`}>AI</div>
-      <p className="section-label">Easy bot</p>
+      <p className="section-label">{profiles[actor].controller} bot</p>
       <h2>{seatName(profiles, actor)} is reviewing the Docket</h2>
       <p>{error ?? 'Selecting one legal action…'}</p>
       <div className="thinking-dots" aria-hidden="true"><span /><span /><span /></div>
@@ -970,13 +975,13 @@ function RemoteExperience({ initialCode, onLocalPlay }: {
     setNotice(`You joined room ${roomCode} as ${seat}.`);
   }
 
-  async function configureBot(seat: SeatId, enabled: boolean) {
+  async function configureBot(seat: SeatId, controller: Controller) {
     if (!session) return;
     setBusy(true);
     setError(null);
     const result = await remoteRequest<RemotePlayerSnapshot>(
       `/api/rooms/${session.code}/bot`,
-      { method: 'POST', token: session.token, body: { seat, enabled } },
+      { method: 'POST', token: session.token, body: { seat, controller } },
     );
     setBusy(false);
     if (result.ok) setSnapshot(result.value);
@@ -1077,7 +1082,7 @@ function RemoteExperience({ initialCode, onLocalPlay }: {
         notice={notice}
         onSeedChange={setSeed}
         onCopyInvite={() => { void copyInvite(lobby.code); }}
-        onConfigureBot={(seat, enabled) => { void configureBot(seat, enabled); }}
+        onConfigureBot={(seat, controller) => { void configureBot(seat, controller); }}
         onStart={() => { void startRemoteGame(); }}
         onLeave={leaveRoom}
       />
@@ -1203,7 +1208,7 @@ function RemoteEntry({
               >
                 <span className={`seat-chip seat-${seat.seat.toLowerCase()}`}>{seat.seat}</span>
                 <strong>{seat.name}</strong>
-                <small>{seat.claimed ? seat.controller === 'easy' ? 'Bot seat' : 'Claimed' : 'Join this firm'}</small>
+                <small>{seat.claimed ? seat.controller !== 'human' ? `${seat.controller} bot` : 'Claimed' : 'Join this firm'}</small>
               </button>
             ))}
           </div>
@@ -1251,7 +1256,7 @@ function RemoteLobbyPanel({
   notice: string | null;
   onSeedChange: (value: string) => void;
   onCopyInvite: () => void;
-  onConfigureBot: (seat: SeatId, enabled: boolean) => void;
+  onConfigureBot: (seat: SeatId, controller: Controller) => void;
   onStart: () => void;
   onLeave: () => void;
 }) {
@@ -1274,12 +1279,22 @@ function RemoteLobbyPanel({
             <article className={`remote-seat side-${SEAT_META[seat.seat].side}`} key={seat.seat}>
               <span className={`seat-chip seat-${seat.seat.toLowerCase()}`}>{seat.seat}</span>
               <strong>{seat.name}</strong>
-              <small>{seat.claimed ? seat.controller === 'easy' ? 'Easy bot ready' : 'Player ready' : 'Open seat'}</small>
-              {isHost && seat.seat !== lobby.hostSeat && !seat.claimed && (
-                <button className="button button-quiet" type="button" disabled={busy} onClick={() => onConfigureBot(seat.seat, true)}>Add Easy bot</button>
-              )}
-              {isHost && seat.controller === 'easy' && (
-                <button className="button button-quiet" type="button" disabled={busy} onClick={() => onConfigureBot(seat.seat, false)}>Open to player</button>
+              <small>{seat.claimed ? seat.controller !== 'human' ? `${seat.controller} bot ready` : 'Player ready' : 'Open seat'}</small>
+              {isHost && seat.seat !== lobby.hostSeat
+                  && (!seat.claimed || seat.controller !== 'human') && (
+                <label className="bot-level-field">
+                  Seat type
+                  <select
+                    value={seat.controller}
+                    disabled={busy}
+                    onChange={(event) => onConfigureBot(seat.seat, event.target.value as Controller)}
+                  >
+                    <option value="human">Open to player</option>
+                    <option value="easy">Easy bot</option>
+                    <option value="medium">Medium bot</option>
+                    <option value="hard">Hard bot</option>
+                  </select>
+                </label>
               )}
             </article>
           ))}

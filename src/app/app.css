@@ -135,6 +135,8 @@ button.remote-seat:hover:not(:disabled) { transform: translateY(-2px); border-co
 .remote-seat > strong, .remote-seat > small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .remote-seat > small { grid-column: 2; color: var(--muted); font-size: 0.72rem; }
 .remote-seat > .button { grid-column: 1 / -1; width: 100%; margin-top: 8px; }
+.bot-level-field { grid-column: 1 / -1; margin-top: 8px; color: var(--muted); font-size: 0.72rem; }
+.bot-level-field select { width: 100%; margin-top: 5px; }
 .remote-lobby-actions { display: flex; flex-wrap: wrap; justify-content: end; gap: 10px; }
 .remote-lobby-card { margin-top: 18px; }
 .remote-start-row { display: grid; grid-template-columns: minmax(220px, 0.7fr) 1fr; gap: 22px; align-items: end; margin-top: 25px; padding-top: 24px; border-top: 1px solid var(--line); }

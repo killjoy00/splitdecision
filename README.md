@@ -9,9 +9,9 @@ The playable Milestone 0 build includes:
 - private remote rooms for up to four devices
 - six-character invite codes and shareable room links
 - server-authoritative turns backed by a Cloudflare Durable Object
-- mix-and-match Human and Easy-bot remote seats
+- mix-and-match Human, Easy, Medium, and Hard remote seats
 - complete local pass-and-play React interface
-- four Human or Easy-bot seats with named firms
+- four Human, Easy, Medium, or Hard seats with named firms
 - privacy handoffs for every secret decision
 - responsive public board, Docket, scoring history, and verdict
 - automatic browser save and resume
@@ -22,7 +22,8 @@ The playable Milestone 0 build includes:
 - normal Hearing and Closing Argument scoring
 - team-floor verdict calculation
 - player-view redaction for secret Closing Argument information
-- Easy random-bot simulation
+- Easy random, Medium heuristic, and Hard sampled-lookahead bots
+- difficulty matchups and gameplay-differentiation simulation metrics
 - engine tests and invariant checks
 
 The advanced Specialty module is represented in canonical data but is intentionally not active in this first implementation slice. A later engine increment should add Specialty selection, timing windows, powers, and endgame bonuses before the UI is treated as rules-complete.
@@ -35,6 +36,7 @@ The engine has completed a 1,000-game random-bot validation run without an invar
 npm install
 npm test
 npm run simulate -- --games 1000 --seed demo
+npm run analyze:gameplay -- --profile-games 300 --matchup-games 300 --hard-games 80
 npm run dev
 ```
 

@@ -130,7 +130,7 @@ describe('remote game rooms', () => {
       const configured = await api<RemotePlayerSnapshot>(`/api/rooms/${code}/bot`, {
         method: 'POST',
         token,
-        body: { seat, enabled: true },
+        body: { seat, controller: 'easy' },
       });
       expect(configured.result.ok).toBe(true);
     }
@@ -157,6 +157,43 @@ describe('remote game rooms', () => {
     if (!current.result.ok) throw new Error(current.result.error);
     expect(current.result.value.game?.phase).toBe('complete');
     expect(current.result.value.game?.verdict).not.toBeNull();
+  });
+
+  it('lets the host select and change bot difficulty', async () => {
+    const host = await createRoom('Bot Host');
+    const medium = await api<RemotePlayerSnapshot>(`/api/rooms/${host.session.code}/bot`, {
+      method: 'POST',
+      token: host.session.token,
+      body: { seat: 'D1', controller: 'medium' },
+    });
+    expect(medium.result.ok).toBe(true);
+    if (!medium.result.ok) throw new Error(medium.result.error);
+    expect(medium.result.value.lobby.seats.find((seat) => seat.seat === 'D1')).toMatchObject({
+      controller: 'medium',
+      name: 'Medium Bot D1',
+      claimed: true,
+    });
+
+    const hard = await api<RemotePlayerSnapshot>(`/api/rooms/${host.session.code}/bot`, {
+      method: 'POST',
+      token: host.session.token,
+      body: { seat: 'D1', controller: 'hard' },
+    });
+    expect(hard.result.ok).toBe(true);
+    if (!hard.result.ok) throw new Error(hard.result.error);
+    expect(hard.result.value.lobby.seats.find((seat) => seat.seat === 'D1')?.controller).toBe('hard');
+
+    const opened = await api<RemotePlayerSnapshot>(`/api/rooms/${host.session.code}/bot`, {
+      method: 'POST',
+      token: host.session.token,
+      body: { seat: 'D1', controller: 'human' },
+    });
+    expect(opened.result.ok).toBe(true);
+    if (!opened.result.ok) throw new Error(opened.result.error);
+    expect(opened.result.value.lobby.seats.find((seat) => seat.seat === 'D1')).toMatchObject({
+      controller: 'human',
+      claimed: false,
+    });
   });
 
   it('expires room state when its alarm runs', async () => {

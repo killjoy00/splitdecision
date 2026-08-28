@@ -3,7 +3,7 @@
 ## Completed in Milestone 0
 
 - Complete responsive React pass-and-play interface
-- Four named Human or Easy-bot seats
+- Four named Human, Easy, Medium, or Hard seats
 - Private-device handoffs for splits, brief choices, and turns
 - Automatic local save/resume, scoring history, and verdict presentation
 - Pure deterministic rules engine isolated from React
@@ -15,12 +15,13 @@
 - Team-floor verdict and individual winner resolution
 - Secret Closing Argument and private-choice visibility filtering
 - Deterministic action replay and state hashes
-- Easy random bots and headless batch simulation
+- Easy random bots, transparent Medium heuristics, and sampled-lookahead Hard bots
+- Headless population profiles, difficulty matchups, and differentiation metrics
 - Development invariants and automated tests
 
 ## Validation
 
-- `npm test`: 19/19 tests passing
+- `npm test`: engine and Cloudflare room suites passing
 - 1,000 seeded random-bot games without an invariant failure
 - Every simulated game resolved exactly 96 player actions and consumed all 36 Case cards
 
@@ -34,12 +35,11 @@ Aggregate random-bot results are recorded in `docs/milestone-0-simulation.json`:
 - Closing Arguments changed the winning side: 13.6%
 - Closing Arguments changed the winning firm: 27.9%
 
-These figures validate execution and rough symmetry only. Random bots do not test strategic balance.
+These figures validate execution and rough symmetry only. The strategic-bot report and gameplay recommendations are in `docs/GAMEPLAY_ANALYSIS.md`.
 
 ## Deferred intentionally
 
 - Specialty selection, one-time powers, timing windows, and endgame Specialty bonuses
-- Standard heuristic bot and Monte Carlo bot
-- Telemetry export/dashboard and online multiplayer
+- Full simulation telemetry dashboard
 
 The engine rejects `specialtiesEnabled: true` rather than silently applying incomplete rules.

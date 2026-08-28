@@ -3,12 +3,13 @@ import {
   SEAT_ORDER,
   applyAction,
   assertGameInvariants,
-  chooseEasyAction,
+  chooseBotAction,
   createGame,
   createRandom,
   getLegalActions,
   getPendingActors,
   getPlayerView,
+  type AutomatedBotLevel,
   type GameState,
   type SeatId,
 } from '../../src/engine/index.js';
@@ -64,6 +65,16 @@ function parseSeat(value: unknown): SeatId | null {
     : null;
 }
 
+function parseController(value: unknown): RemoteController | null {
+  return value === 'human' || value === 'easy' || value === 'medium' || value === 'hard'
+    ? value
+    : null;
+}
+
+function botName(level: AutomatedBotLevel, seat: SeatId): string {
+  return `${level.charAt(0).toUpperCase()}${level.slice(1)} Bot ${seat}`;
+}
+
 function createRoomCode(): string {
   const values = crypto.getRandomValues(new Uint8Array(6));
   return Array.from(values, (value) => ROOM_ALPHABET[value % ROOM_ALPHABET.length]).join('');
@@ -86,7 +97,7 @@ function lobbyFor(room: StoredRoom): RemoteLobby {
     seat,
     name: room.seats[seat].name,
     controller: room.seats[seat].controller,
-    claimed: room.seats[seat].controller === 'easy' || room.seats[seat].tokenHash !== null,
+    claimed: room.seats[seat].controller !== 'human' || room.seats[seat].tokenHash !== null,
   }));
   return {
     code: room.code,
@@ -216,11 +227,12 @@ export class GameRoom extends DurableObject<Env> {
     let steps = 0;
     while (room.game.phase !== 'complete') {
       const actor = getPendingActors(room.game)[0] ?? null;
-      if (!actor || room.game.players[actor].controller !== 'easy') break;
+      if (!actor || room.game.players[actor].controller === 'human') break;
+      const level = room.game.players[actor].controller as AutomatedBotLevel;
       const random = createRandom(
         `${room.game.seed}:remote-bot:${room.game.actionHistory.length}`,
       );
-      const action = chooseEasyAction(room.game, actor, random);
+      const action = chooseBotAction(room.game, actor, level, random);
       const result = applyAction(room.game, action);
       if (!result.ok) return failure(500, 'bot_action_failed', result.error.message);
       room.game = result.state;
@@ -299,7 +311,7 @@ export class GameRoom extends DurableObject<Env> {
     if (!room) return failure(404, 'room_not_found', 'Room not found or expired.');
     if (room.game) return failure(409, 'game_started', 'This game has already started.');
     const selected = room.seats[seat];
-    if (selected.controller === 'easy' || selected.tokenHash) {
+    if (selected.controller !== 'human' || selected.tokenHash) {
       return failure(409, 'seat_taken', 'That seat is no longer available.');
     }
     selected.name = name;
@@ -315,20 +327,23 @@ export class GameRoom extends DurableObject<Env> {
     };
   }
 
-  async setBot(token: string, seatValue: unknown, enabledValue: unknown): Promise<RemoteApiResult<RemotePlayerSnapshot>> {
+  async setBot(token: string, seatValue: unknown, controllerValue: unknown): Promise<RemoteApiResult<RemotePlayerSnapshot>> {
     const tokenHash = await sha256Hex(token);
     const room = this.readRoom();
     if (!room) return failure(404, 'room_not_found', 'Room not found or expired.');
     if (room.game) return failure(409, 'game_started', 'Bot seats cannot change after the game starts.');
     if (!this.requireHost(room, tokenHash)) return failure(403, 'host_required', 'Only the host can configure bots.');
     const seat = parseSeat(seatValue);
-    if (!seat || seat === room.hostSeat || typeof enabledValue !== 'boolean') {
+    const controller = parseController(controllerValue);
+    if (!seat || seat === room.hostSeat || !controller) {
       return failure(400, 'invalid_bot', 'Choose a non-host seat and a bot setting.');
     }
     const selected = room.seats[seat];
     if (selected.tokenHash) return failure(409, 'seat_taken', 'A player has already claimed that seat.');
-    selected.controller = enabledValue ? 'easy' : 'human';
-    selected.name = enabledValue ? `Easy Bot ${seat}` : `Open ${seat} seat`;
+    selected.controller = controller;
+    selected.name = controller === 'human'
+      ? `Open ${seat} seat`
+      : botName(controller, seat);
     this.writeRoom(room);
     await this.extendLifetime();
     return { ok: true, value: this.snapshot(room, room.hostSeat) };
@@ -456,7 +471,9 @@ export default {
     const token = bearerToken(request);
     if (!token) return json(failure(401, 'missing_session', 'Player session is required.'), origin);
     if (operation === 'bot') {
-      return json(await room.setBot(token, body.value.seat, body.value.enabled), origin);
+      const controller = body.value.controller
+        ?? (body.value.enabled === true ? 'easy' : body.value.enabled === false ? 'human' : undefined);
+      return json(await room.setBot(token, body.value.seat, controller), origin);
     }
     if (operation === 'start') {
       return json(await room.start(token, body.value.seed), origin);

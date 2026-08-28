@@ -2,13 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   applyAction,
+  chooseHardAction,
   chooseEasyAction,
+  chooseMediumAction,
   createGame,
   createRandom,
   getPendingActors,
   hashGameState,
   replayGame,
+  runBotGame,
   simulateGames,
+  simulateMatchup,
 } from '../dist/index.js';
 
 function playGame(seed) {
@@ -73,4 +77,53 @@ test('batch simulations return complete aggregate metrics', () => {
   assert.ok(Math.abs(summary.leadRate + summary.coCounselRate - 1) < 1e-12);
   assert.ok(summary.sideTieRate >= 0 && summary.sideTieRate <= 1);
   assert.ok(summary.internalTieRate >= 0 && summary.internalTieRate <= 1);
+  assert.ok(summary.scheduledIssueRate >= 0 && summary.scheduledIssueRate <= 1);
+  assert.ok(summary.knownClosingRate >= 0 && summary.knownClosingRate <= 1);
+});
+
+test('Medium and Hard bots complete deterministic legal games', () => {
+  const controllers = { P1: 'hard', D1: 'medium', P2: 'hard', D2: 'medium' };
+  const first = runBotGame('skilled-bot-game', controllers);
+  const second = runBotGame('skilled-bot-game', controllers);
+  assert.deepEqual(first, second);
+  assert.equal(first.actions, 96);
+});
+
+test('Medium and Hard choices do not depend on opponents\' Closing Arguments', () => {
+  let state = createGame({
+    seed: 'bot-secret-boundary',
+    controllers: { P1: 'hard', D1: 'hard', P2: 'hard', D2: 'hard' },
+  });
+  const setupRandom = createRandom('bot-secret-boundary:setup');
+  while (!(state.round === 6 && state.phase === 'round_argue' && state.actionsResolvedThisRound === 11)) {
+    const nextActor = getPendingActors(state)[0];
+    assert.ok(nextActor);
+    const result = applyAction(state, chooseEasyAction(state, nextActor, setupRandom));
+    assert.equal(result.ok, true, result.ok ? '' : result.error.message);
+    state = result.state;
+  }
+  const actor = getPendingActors(state)[0];
+  assert.ok(actor);
+  const altered = structuredClone(state);
+  const otherSeats = ['P1', 'D1', 'P2', 'D2'].filter((seat) => seat !== actor);
+  const originalIssues = otherSeats.map((seat) => altered.players[seat].closingArgumentIssue);
+  otherSeats.forEach((seat, index) => {
+    altered.players[seat].closingArgumentIssue = originalIssues[(index + 1) % originalIssues.length];
+  });
+
+  assert.deepEqual(
+    chooseMediumAction(state, actor, createRandom('medium-secret-test')),
+    chooseMediumAction(altered, actor, createRandom('medium-secret-test')),
+  );
+  assert.deepEqual(
+    chooseHardAction(state, actor, createRandom('hard-secret-test')),
+    chooseHardAction(altered, actor, createRandom('hard-secret-test')),
+  );
+});
+
+test('difficulty matchups establish a deterministic skill gradient', () => {
+  const medium = simulateMatchup(20, 'medium', 'easy', 'gradient-medium-easy');
+  const hard = simulateMatchup(20, 'hard', 'medium', 'gradient-hard-medium');
+  assert.ok(medium.challengerWinRate >= 0.65, JSON.stringify(medium));
+  assert.ok(hard.challengerWinRate >= 0.55, JSON.stringify(hard));
 });
