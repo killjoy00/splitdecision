@@ -4,9 +4,13 @@ A browser playtest implementation of **Split Decision**, a four-player strategy 
 
 ## Current milestone
 
-This branch establishes the Milestone 0 foundation:
+Milestone 0 includes:
 
-- React + TypeScript + Vite application shell
+- complete local pass-and-play React interface
+- four Human or Easy-bot seats with named firms
+- privacy handoffs for every secret decision
+- responsive public board, Docket, scoring history, and verdict
+- automatic browser save and resume
 - pure deterministic rules engine separated from React
 - seeded setup and mirrored Hearing schedule
 - all ten legal 3/3 brief partitions
@@ -29,6 +33,12 @@ npm test
 npm run simulate -- --games 1000 --seed demo
 npm run dev
 ```
+
+The browser app saves the active case to local storage after every accepted action. Use **New case** to clear it and return to setup.
+
+## Deploy
+
+Pushes to `main` deploy `web-dist` through GitHub Pages using `.github/workflows/deploy-pages.yml`. In repository **Settings → Pages**, select **GitHub Actions** as the source. The production custom domain is `splitdecision.planitnow.us`, so Vite's default `/` base path is intentional.
 
 ## Architecture
 
