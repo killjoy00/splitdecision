@@ -1,8 +1,11 @@
 # Milestone 0 engine status
 
-## Completed in this branch
+## Completed in Milestone 0
 
-- React, TypeScript, and Vite application shell
+- Complete responsive React pass-and-play interface
+- Four named Human or Easy-bot seats
+- Private-device handoffs for splits, brief choices, and turns
+- Automatic local save/resume, scoring history, and verdict presentation
 - Pure deterministic rules engine isolated from React
 - Seeded setup with mirrored Hearing schedule
 - All 36 Case cards and all 10 legal 3/3 partitions
@@ -17,7 +20,7 @@
 
 ## Validation
 
-- `npm test`: 16/16 tests passing
+- `npm test`: 19/19 tests passing
 - 1,000 seeded random-bot games without an invariant failure
 - Every simulated game resolved exactly 96 player actions and consumed all 36 Case cards
 
@@ -36,8 +39,7 @@ These figures validate execution and rough symmetry only. Random bots do not tes
 ## Deferred intentionally
 
 - Specialty selection, one-time powers, timing windows, and endgame Specialty bonuses
-- Full pass-and-play board UI and privacy gates
 - Standard heuristic bot and Monte Carlo bot
-- Save/load UI, telemetry dashboard, responsive polish, and online multiplayer
+- Telemetry export/dashboard and online multiplayer
 
 The engine rejects `specialtiesEnabled: true` rather than silently applying incomplete rules.
