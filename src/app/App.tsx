@@ -17,6 +17,8 @@ import {
   type DocketCardState,
   type AutomatedBotLevel,
   type BotLevel,
+  type CaseActionType,
+  type CaseCardData,
   type GameAction,
   type GameState,
   type HearingResult,
@@ -118,6 +120,20 @@ function loadSession(): SavedSession | null {
 
 function issueName(issueId: IssueId): string {
   return ISSUE_BY_ID.get(issueId)?.name ?? issueId;
+}
+
+function actionName(action: CaseActionType | 'choose'): string {
+  if (action === 'co_counsel') return 'Co-Counsel';
+  if (action === 'second_chair') return 'Second Chair';
+  if (action === 'citation') return 'Citation';
+  if (action === 'choose') return 'Choose action';
+  return 'Lead';
+}
+
+function cardIssueSummary(card: CaseCardData | null | undefined): string {
+  if (!card) return '';
+  if (card.form === 'citation') return 'Uses another card in your brief';
+  return card.issues.map(issueName).join(' / ');
 }
 
 function seatName(profiles: SeatProfiles, seat: SeatId): string {
@@ -453,6 +469,8 @@ function SetupScreen({
         </div>
       </section>
 
+      <GamePrimer />
+
       <form className="setup-card" onSubmit={(event) => { event.preventDefault(); onStart(); }}>
         <div className="setup-heading">
           <div><p className="section-label">Seat the firms</p><h2>Open a new case</h2></div>
@@ -515,6 +533,8 @@ function SetupScreen({
           <button className="button button-primary button-large" type="submit">Call the case</button>
         </div>
       </form>
+
+      <RulesGuide />
     </main>
   );
 }
@@ -799,7 +819,7 @@ function ArgumentControls({ actor, game, legalActions, onSubmit }: {
   );
   return (
     <div className="decision-area">
-      <div className="decision-copy"><p className="section-label">Argument {game.actionsResolvedThisRound + 1} of 12</p><h3>Play one Case card</h3><p>Pick an assigned card, then choose its eligible Issue or Lead/Co-Counsel action.</p></div>
+      <div className="decision-copy"><p className="section-label">Argument {game.actionsResolvedThisRound + 1} of 12</p><h3>Play one Case card</h3><p>Pick an assigned card, then choose one of its complete legal resolutions below.</p></div>
       <div className="argument-grid">
         {assignedSlots.map((slot) => {
           const docket = game.docket.find((entry) => entry.slot === slot);
@@ -814,15 +834,21 @@ function ArgumentControls({ actor, game, legalActions, onSubmit }: {
                   {actions.map((action) => {
                     const actionType = action.focusAction ?? card.action;
                     const withPower = action.useSpecialty === true;
+                    const citedCard = action.citedSlot === undefined
+                      ? null
+                      : CARD_BY_ID.get(game.docket.find((entry) => entry.slot === action.citedSlot)?.cardId ?? '');
                     return (
                       <button
                         className={`action-button action-${actionType} ${withPower ? 'action-specialty' : ''}`}
                         type="button"
-                        key={`${action.slot}-${action.chosenIssue}-${action.focusAction ?? card.action}-${withPower ? 'power' : 'plain'}`}
+                        key={`${action.slot}-${action.chosenIssue}-${action.focusAction ?? card.action}-${action.citedSlot ?? 'none'}-${withPower ? 'power' : 'plain'}`}
                         onClick={() => onSubmit(action)}
                       >
                         <span>{issueName(action.chosenIssue)}</span>
-                        <strong>{actionType === 'lead' ? 'Lead' : 'Co-Counsel'}</strong>
+                        <strong>{actionName(actionType)}</strong>
+                        {action.citedSlot !== undefined && (
+                          <small className="action-reference">Cite {action.citedSlot} · {citedCard?.title}</small>
+                        )}
                         {withPower && <em className="action-specialty-tag">Specialty</em>}
                       </button>
                     );
@@ -843,9 +869,9 @@ function DocketChoiceCard({ docket, selected, onClick }: { docket: DocketCardSta
     <button className={`docket-choice ${selected ? 'docket-choice-selected' : ''}`} type="button" onClick={onClick} aria-pressed={selected}>
       <span className="slot-number">{docket.slot}</span>
       <strong>{card?.title}</strong>
-      <small>{card?.issues.map(issueName).join(' / ')}</small>
+      <small>{cardIssueSummary(card)}</small>
       <p className="docket-choice-rules">{card?.rulesText}</p>
-      <span className={`card-action card-action-${card?.action}`}>{card?.action === 'choose' ? 'Choose action' : card?.action.replace('_', '-')}</span>
+      <span className={`card-action card-action-${card?.action}`}>{card ? actionName(card.action) : ''}</span>
       <span className="selection-mark">{selected ? 'Selected' : 'Select'}</span>
     </button>
   );
@@ -948,7 +974,7 @@ function DocketBoard({ game, profiles }: { game: DisplayGame; profiles: SeatProf
           const card = CARD_BY_ID.get(docket.cardId);
           return (
             <article className="public-case-card" key={docket.slot}>
-              <div className="case-card-heading"><span className="slot-number">{docket.slot}</span><div><strong>{card?.title}</strong><small>{card?.issues.map(issueName).join(' / ')}</small></div></div>
+              <div className="case-card-heading"><span className="slot-number">{docket.slot}</span><div><strong>{card?.title}</strong><small>{cardIssueSummary(card)}</small></div></div>
               <p>{card?.rulesText}</p>
               <div className="usage-row">
                 {SIDE_IDS.map((side) => {
@@ -1603,6 +1629,9 @@ function RemoteEntry({
           </form>
         </section>
       )}
+
+      <GamePrimer />
+      <RulesGuide />
     </main>
   );
 }
@@ -1716,6 +1745,9 @@ function RemoteLobbyPanel({
           <div className="remote-waiting-copy"><strong>Waiting for the host</strong><span>The game will appear here automatically when the host starts it.</span></div>
         )}
       </section>
+
+      <GamePrimer />
+      <RulesGuide />
     </main>
   );
 }
@@ -1758,18 +1790,147 @@ function RemoteSeatManager({ lobby, busy, onReplace }: {
   );
 }
 
+function GamePrimer() {
+  return (
+    <section className="game-primer" aria-labelledby="game-primer-title">
+      <header className="primer-heading">
+        <div>
+          <p className="section-label">Learn before you play</p>
+          <h2 id="game-primer-title">One case. Six rounds. Two contests.</h2>
+          <p>
+            You need your partnership to win the case, then your firm must finish ahead of its ally.
+            Every decision asks how much to cooperate—and how much credit to keep.
+          </p>
+        </div>
+        <a className="button button-quiet" href="#rules-reference">Jump to the complete rules</a>
+      </header>
+
+      <div className="primer-verdict" aria-label="How to win">
+        <div>
+          <span>First · Win the case</span>
+          <strong>Compare each side’s lower firm score.</strong>
+          <p>The side with the stronger partner—the higher floor—reaches the favorable verdict.</p>
+        </div>
+        <span className="primer-then" aria-hidden="true">Then</span>
+        <div>
+          <span>Second · Win the game</span>
+          <strong>Lead your partner on the winning side.</strong>
+          <p>The higher-scoring firm on that side takes the individual victory.</p>
+        </div>
+      </div>
+
+      <ol className="primer-rounds" aria-label="What happens each round">
+        <li><span>1</span><div><strong>Divide</strong><p>Each side secretly splits the six-card Docket into two briefs of three.</p></div></li>
+        <li><span>2</span><div><strong>Choose</strong><p>The Chooser takes one brief. The Divider argues the other.</p></div></li>
+        <li><span>3</span><div><strong>Argue</strong><p>Resolve your three assigned cards and place markers on their eligible Issues.</p></div></li>
+        <li><span>4</span><div><strong>Hear</strong><p>Two scheduled Issues score. Then roles rotate and a new Docket appears.</p></div></li>
+      </ol>
+
+      <div className="primer-actions" aria-label="Core Case card actions">
+        <article className="primer-action primer-action-lead">
+          <span>Lead</span><strong>3 of your markers</strong><p>Best for personal control and Lead Credit.</p>
+        </article>
+        <article className="primer-action primer-action-counsel">
+          <span>Co-Counsel</span><strong>2 yours · 1 partner · 1 Joint Work</strong><p>Builds the side and protects your partner’s score.</p>
+        </article>
+        <article className="primer-action primer-action-focus">
+          <span>Focus</span><strong>Choose either action</strong><p>Flexible cards stay tied to their one printed Issue.</p>
+        </article>
+        <article className="primer-action primer-action-citation">
+          <span>Citation</span><strong>2 yours · 1 Joint Work</strong><p>Borrow an Issue from either other card in your brief.</p>
+        </article>
+        <article className="primer-action primer-action-second-chair">
+          <span>Second Chair</span><strong>1 yours · 2 partner · 1 Joint Work</strong><p>Strengthens the partnership while giving your ally more control.</p>
+        </article>
+      </div>
+    </section>
+  );
+}
+
 function RulesGuide() {
   return (
-    <details className="rules-guide">
-      <summary>Quick rules reference</summary>
-      <div className="rules-grid">
-        <div><span>1</span><strong>Divide</strong><p>Each side’s Divider secretly splits the six cards into two briefs of three.</p></div>
-        <div><span>2</span><strong>Choose</strong><p>Each Chooser takes one brief. The Divider receives the other.</p></div>
-        <div><span>3</span><strong>Argue</strong><p>Lead adds 3 own markers. Co-Counsel adds 2 own, 1 partner, and 1 Joint Work.</p></div>
-        <div><span>4</span><strong>Score</strong><p>Two scheduled Issues score each round. Lead earns 3 and a participating ally earns 2.</p></div>
-        <div><span>5</span><strong>Close</strong><p>Four secret Closing Argument Issues score again after Round 6 for 2/1.</p></div>
-        <div><span>6</span><strong>Specialize</strong><p>Your private Specialty has one power and one endgame bonus. Reveal it only when used or when the case ends.</p></div>
-        <div><span>7</span><strong>Verdict</strong><p>Compare each side’s lower firm score. The higher floor wins; its higher firm wins the game.</p></div>
+    <details className="rules-guide" id="rules-reference">
+      <summary>
+        <span><small>Rules reference</small><strong>How the full case works</strong></span>
+        <span className="rules-summary-action" aria-hidden="true"><span>Open</span><span>Close</span></span>
+      </summary>
+      <div className="rules-reference-body">
+        <section className="rules-verdict" aria-labelledby="rules-verdict-title">
+          <div>
+            <p className="section-label">The verdict</p>
+            <h3 id="rules-verdict-title">Your partner is part of your score.</h3>
+            <p>
+              Find the lower Reputation score on each side. The higher of those two floors wins the
+              case. Only then compare the two firms on the winning side to determine the individual winner.
+            </p>
+          </div>
+          <div className="rules-formula">
+            <span>Side floor</span>
+            <strong>min(Firm 1, Firm 2)</strong>
+            <small>A runaway leader can still lose if its partner falls behind.</small>
+          </div>
+        </section>
+
+        <section className="rules-section" aria-labelledby="rules-round-title">
+          <div className="rules-section-heading">
+            <p className="section-label">Rounds 1–6</p>
+            <h3 id="rules-round-title">From Docket to Hearing</h3>
+          </div>
+          <div className="rules-step-grid">
+            <article><span>1</span><strong>Reveal</strong><p>Deal six Case cards into the public Docket. Each side will use every card once.</p></article>
+            <article><span>2</span><strong>Divide</strong><p>Each Divider privately chooses one of the ten possible 3/3 splits. Both splits reveal together.</p></article>
+            <article><span>3</span><strong>Choose</strong><p>Each Chooser privately selects one brief. The unchosen brief goes to that side’s Divider.</p></article>
+            <article><span>4</span><strong>Argue</strong><p>Starting clockwise, every firm resolves its three assigned cards over three circuits.</p></article>
+            <article><span>5</span><strong>Score</strong><p>The two scheduled Issues hold Hearings in order. Divider and Starting Player roles then rotate.</p></article>
+          </div>
+        </section>
+
+        <div className="rules-two-column">
+          <section className="rules-section" aria-labelledby="rules-cards-title">
+            <div className="rules-section-heading">
+              <p className="section-label">Case cards</p>
+              <h3 id="rules-cards-title">Choose where—and sometimes how—to argue.</h3>
+            </div>
+            <dl className="rules-definition-list">
+              <div><dt>Lead</dt><dd>Choose one printed Issue and add 3 of your firm’s markers.</dd></div>
+              <div><dt>Co-Counsel</dt><dd>Choose one printed Issue; add 2 of yours, 1 partner marker, and 1 Joint Work.</dd></div>
+              <div><dt>Focus</dt><dd>Use its single printed Issue, then choose Lead or Co-Counsel.</dd></div>
+              <div><dt>Citation</dt><dd>Choose either other card in your three-card brief and one Issue printed on it; add 2 of yours and 1 Joint Work. The cited card can be used before or after Citation.</dd></div>
+              <div><dt>Second Chair</dt><dd>Choose one printed Issue; add 1 of yours, 2 partner markers, and 1 Joint Work.</dd></div>
+            </dl>
+          </section>
+
+          <section className="rules-section" aria-labelledby="rules-hearing-title">
+            <div className="rules-section-heading">
+              <p className="section-label">Hearings</p>
+              <h3 id="rules-hearing-title">Strength wins the Issue. Personal markers win the credit.</h3>
+            </div>
+            <ol className="rules-hearing-list">
+              <li><strong>Total each side:</strong> both firms’ markers plus Joint Work.</li>
+              <li><strong>Find the Lead Firm:</strong> compare personal markers on the winning side; Joint Work does not count.</li>
+              <li><strong>Award Reputation:</strong> Lead earns 3; its ally earns 2 only if it contributed a personal marker.</li>
+              <li><strong>Reset:</strong> clear the Issue after its first Hearing; retain markers after its second.</li>
+            </ol>
+          </section>
+        </div>
+
+        <section className="rules-section" aria-labelledby="rules-finale-title">
+          <div className="rules-section-heading">
+            <p className="section-label">Endgame</p>
+            <h3 id="rules-finale-title">Closing Arguments and Specialties</h3>
+          </div>
+          <div className="rules-detail-grid">
+            <article><strong>Closing Arguments</strong><p>After Round 6, reveal the four unique secret Closing Issues. Score them again for 2 Reputation to Lead and 1 to a participating ally. Do not clear markers.</p></article>
+            <article><strong>Specialties</strong><p>Choose one of two private roles at setup. Its optional power can be used once; its conditional bonus scores before the verdict. Reveal it when used or when the case ends.</p></article>
+            <article><strong>Side ties</strong><p>More Joint Work wins a tied Hearing. If still tied above zero, Court’s Favor decides and then passes to the other side. A 0–0 Hearing awards nothing.</p></article>
+            <article><strong>Firm ties</strong><p>First Chair breaks a tied Lead calculation and then passes. Final firm ties use Lead Credits, Closing Lead Credits, then First Chair.</p></article>
+          </div>
+
+          <div className="rules-final-tiebreak">
+            <strong>If the two side floors tie:</strong>
+            <span>higher combined Reputation wins, then Court’s Favor.</span>
+          </div>
+        </section>
       </div>
     </details>
   );

@@ -83,7 +83,7 @@ function actionKey(action: GameAction): string {
   if (action.type === 'use_specialty') {
     return `specialty:use:${action.toIssue ?? 'self'}:${(action.fromIssues ?? []).join(',')}`;
   }
-  return `play:${action.slot}:${action.chosenIssue}:${action.focusAction ?? 'fixed'}:${action.useSpecialty ? 'power' : 'plain'}`;
+  return `play:${action.slot}:${action.chosenIssue}:${action.focusAction ?? 'fixed'}:${action.citedSlot ?? 'none'}:${action.useSpecialty ? 'power' : 'plain'}`;
 }
 
 function cloneState(state: GameState): GameState {
@@ -151,10 +151,7 @@ export function sampleBotInformationState(
   const seenCardIds = new Set(state.caseDeck.slice(0, state.caseDeckIndex));
   modeled.caseDeck = [
     ...state.caseDeck.slice(0, state.caseDeckIndex),
-    ...shuffled(
-      GAME_DATA.caseCards.map((card) => card.id).filter((id) => !seenCardIds.has(id)),
-      random,
-    ),
+    ...shuffled(state.caseDeck.filter((id) => !seenCardIds.has(id)), random),
   ];
 
   if (state.phase === 'round_split_commit') {
@@ -328,14 +325,32 @@ function cardOpportunityValue(
   actor: SeatId,
   slot: Slot,
   knownClosingIssue: IssueId | null,
+  companionSlots: readonly Slot[],
 ): number {
   const docketCard = state.docket.find((entry) => entry.slot === slot);
   const card = docketCard ? CARD_BY_ID.get(docketCard.cardId) : null;
   if (!card) return -100;
+  const eligibleIssues = card.form === 'citation'
+    ? [...new Set(companionSlots
+        .filter((companionSlot) => companionSlot !== slot)
+        .flatMap((companionSlot) => {
+          const companionDocket = state.docket.find((entry) => entry.slot === companionSlot);
+          return companionDocket ? CARD_BY_ID.get(companionDocket.cardId)?.issues ?? [] : [];
+        }))]
+    : card.issues;
+  if (eligibleIssues.length === 0) return -100;
   const issueValue = Math.max(
-    ...card.issues.map((issueId) => issueOpportunityValue(state, actor, issueId, knownClosingIssue)),
+    ...eligibleIssues.map((issueId) => issueOpportunityValue(state, actor, issueId, knownClosingIssue)),
   );
-  const actionValue = card.action === 'co_counsel' ? 0.8 : card.action === 'choose' ? 1.1 : 0;
+  const actionValue = card.action === 'co_counsel'
+    ? 0.8
+    : card.action === 'second_chair'
+      ? 1
+      : card.action === 'citation'
+        ? 0.65 + Math.min(eligibleIssues.length, 4) * 0.15
+        : card.action === 'choose'
+          ? 1.1
+          : 0;
   return issueValue + actionValue;
 }
 
@@ -346,7 +361,7 @@ function groupOpportunityValue(
   knownClosingIssue: IssueId | null,
 ): number {
   let value = slots.reduce(
-    (total, slot) => total + cardOpportunityValue(state, actor, slot, knownClosingIssue),
+    (total, slot) => total + cardOpportunityValue(state, actor, slot, knownClosingIssue, slots),
     0,
   );
   const currentHearings = state.hearingSchedule[state.round - 1] ?? [];

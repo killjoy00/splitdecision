@@ -1,6 +1,19 @@
-# Gameplay differentiation analysis
+# Gameplay differentiation and balance
 
-## Reproducible run
+## Current conclusion
+
+Citation and Second Chair materially reduce strategic convergence in bot play without
+introducing a detectable side bias or collapsing the difficulty ladder. They are ready
+for human playtesting. Their marker values should not be tuned again until complete
+human games establish whether the added brief analysis and partner tension are fun.
+
+The evidence is encouraging, not final proof of balance. Bots are useful controlled
+opponents; they do not measure teaching cost, negotiation, perceived agency, or turn
+length.
+
+## Reproducible comparison
+
+The current and prior rules were run with the same seed and sample design:
 
 ```bash
 npm run analyze:gameplay -- \
@@ -10,90 +23,109 @@ npm run analyze:gameplay -- \
   --seed gameplay-analysis-v2
 ```
 
-The profile rows use four bots at the same level. Matchups put two bots of one level on one side and two bots of the other level on the opposing side, alternating Plaintiff and Defense every game. The compact checked-in result is `docs/gameplay-analysis-v2.json`.
+Profile rows use four bots at the same level. Matchups place two bots of one level
+against two of another and alternate the challenger between Plaintiff and Defense.
 
-## Results
+- pre-Specialty baseline: `docs/gameplay-analysis-v2.json`
+- Specialties-only baseline: `docs/gameplay-analysis-v3.json`
+- Citation/Second Chair summary: `docs/gameplay-analysis-v4-summary.json`
+
+## The deck experiment
+
+New games still use exactly 36 cards. Six fixed cards were replaced:
+
+| Action | Before | Current |
+|---|---:|---:|
+| Fixed Lead | 15 | 12 |
+| Fixed Co-Counsel | 15 | 12 |
+| Focus | 6 | 6 |
+| Citation | 0 | 3 |
+| Second Chair | 0 | 3 |
+
+The removed cards form a six-edge cycle across the six Issues. Citation occupies
+alternating edges and Second Chair retains the other three pairs, leaving every Issue
+printed on exactly ten current cards. Each new action therefore resolves 8.33% of all
+Case cards in every complete game.
+
+Citation is relational: it chooses either other card in the acting firm's brief and
+uses one Issue printed on that card. A deal constraint keeps all three Citations out of
+the same six-card Docket, so no 3/3 split can produce an unplayable all-Citation brief.
+Second Chair adds 1 acting-firm marker, 2 partner markers, and 1 Joint Work.
+
+## Differentiation results
 
 | Metric | Easy | Medium | Hard |
 |---|---:|---:|---:|
-| Plays on this round's scheduled Issues | 33.0% | 52.9% | 53.8% |
-| Plays on the acting firm's Closing Issue | 16.8% | 23.3% | 25.6% |
-| Post-Hearing plays on the known Closing Issue | 17.1% | 28.0% | 34.9% |
-| Co-Counsel actions | 49.9% | 53.5% | 56.7% |
-| Normal Hearings decided by a side tiebreak | 13.2% | 44.4% | 63.8% |
-| Normal Hearings with a 0–1 marker margin | 29.7% | 59.4% | 71.8% |
-| Normal Hearings with a 7+ marker margin | 19.8% | 1.8% | 0.2% |
-| Average normal-Hearing margin | 3.78 | 1.63 | 1.03 |
-| Closing changed the winning side | 12.3% | 17.0% | 17.0% |
+| Plays on the scheduled Issues | 32.6% | 55.1% | 56.5% |
+| Plays on the acting firm's Closing Issue | 16.9% | 23.3% | 25.7% |
+| Citation actions | 8.3% | 8.3% | 8.3% |
+| Second Chair actions | 8.3% | 8.3% | 8.3% |
+| Hearings decided by a side tiebreak | 11.1% | 30.1% | 42.6% |
+| Hearings with a 0–1 marker margin | 26.0% | 53.1% | 59.7% |
+| Average Hearing margin | 4.09 | 1.95 | 1.59 |
+| Closing changed the winning side | 16.7% | 14.7% | 19.0% |
+
+The strongest signal is reduced convergence:
+
+| Profile | Base rules | Specialties | Current cards |
+|---|---:|---:|---:|
+| All Medium side-tiebreak rate | 44.4% | 37.9% | **30.1%** |
+| All Hard side-tiebreak rate | 63.8% | 54.0% | **42.6%** |
+
+Against the immediately preceding Specialty rules, average Hearing margins widened
+from 1.78 to 1.95 for Medium and from 1.32 to 1.59 for Hard. The 7+ marker blowout
+rate stayed low at 2.3% and 0.8%, respectively. The change therefore created more
+decisive close Hearings rather than lopsided ones.
+
+The split also matters in a new way. A Citation's target set is determined by the two
+cards grouped with it, so moving the same Citation between briefs changes its later
+legal resolutions. Medium and Hard split evaluation explicitly models those companion
+cards rather than valuing Citation as a standalone card.
+
+## Bot ladder
 
 | Matchup | Games | Higher-level wins |
 |---|---:|---:|
-| Medium vs Easy | 300 | 284 (94.7%) |
-| Hard vs Medium | 100 | 73 (73.0%) |
-| Hard vs Easy | 100 | 96 (96.0%) |
+| Medium vs Easy | 300 | 283 (94.3%) |
+| Hard vs Medium | 100 | 65 (65.0%) |
+| Hard vs Easy | 100 | 98 (98.0%) |
 
-## What the simulation says
+The Hard-versus-Medium result is essentially unchanged from the 64% Specialty-only
+baseline, while both higher levels remain clearly separated from Easy.
 
-The engine has meaningful decisions. Medium's scheduled-Issue rate is 19.9 percentage points above Easy, and Hard is twice as likely as Easy to preserve late markers for its known Closing Argument. Those choices produce a clear difficulty ladder.
+## Symmetry and execution sweep
 
-The larger problem is strategic convergence. As all four seats improve, side-tiebreak Hearings rise from 13.2% to 44.4% and then 63.8%, while blowouts almost disappear. Skilled bots see the same six cards, know the same two scheduled Issues, and each side ultimately plays every card. They therefore find similar placements even though the split determines which partner controls each card.
+A separate 10,000-game Easy-bot run used:
 
-The deck reinforces that convergence: 30 of 36 cards have a fixed Lead or Co-Counsel action. Only the six Focus cards let their player choose the action mode. The data already contains 12 Specialties, but at the time of this baseline the engine intentionally disabled them.
+```bash
+npm run simulate -- --games 10000 --seed citation-second-chair-balance
+```
 
-Closing Arguments are doing useful work and should stay unchanged for the next experiment. Skilled bots target their own secret more often, and the Closing phase changes the winning side in 17% of Medium and Hard games.
+It completed without an invariant failure. Plaintiff won 4,996 games and Defense
+5,004. Individual firms won between 2,427 and 2,569 games. Side-tiebreak Hearings were
+11.08%, the team-floor rule eliminated the table's highest scorer in 10.96%, and
+Closing changed the winning side in 13.08%. The compact result is
+`docs/milestone-0-simulation-v3.json`.
 
-## Follow-up: Specialties enabled
+This is strong evidence against an obvious side or seat bias. Easy bots choose random
+legal actions, so the run is not evidence that competing human strategies are equally
+strong.
 
-Recommendation 1 is now implemented. Re-running the identical command on the same
-`gameplay-analysis-v2` seed with the Specialty module active produces
-`docs/gameplay-analysis-v3.json`:
+## Human playtest questions
 
-| Metric | Easy | Medium | Hard |
-|---|---:|---:|---:|
-| Plays on this round's scheduled Issues | 33.0% | 51.8% | 54.0% |
-| Plays on the acting firm's Closing Issue | 16.9% | 23.2% | 25.3% |
-| Post-Hearing plays on the known Closing Issue | 16.3% | 28.9% | 33.4% |
-| Co-Counsel actions | 50.0% | 53.3% | 56.7% |
-| Normal Hearings decided by a side tiebreak | 12.4% | 37.9% | 54.0% |
-| Normal Hearings with a 0–1 marker margin | 28.0% | 56.4% | 67.3% |
-| Average normal-Hearing margin | 3.96 | 1.78 | 1.32 |
-| Closing changed the winning side | 12.3% | 16.7% | 21.0% |
+Do not change the marker values before collecting these observations:
 
-Side-tiebreak rates against the pre-Specialty baseline:
+1. Does grouping a Citation create an interesting split decision or simply make the
+   split take longer?
+2. Do players understand that Citation may reference a companion card even after that
+   card has resolved?
+3. Does Second Chair feel like a calculated partnership investment, or does giving the
+   partner two markers feel like losing control?
+4. Does all-Hard's remaining 42.6% side-tiebreak rate predict human convergence, or is
+   it specific to deterministic bot heuristics?
+5. Do Citation and Second Chair interact cleanly with all twelve Specialties in live
+   play?
 
-| Profile | Before | After |
-|---|---:|---:|
-| All Easy | 13.2% | 12.4% |
-| All Medium | 44.4% | **37.9%** |
-| All Hard | 63.8% | **54.0%** |
-
-This clears the target set in recommendation 4: the all-Medium side-tiebreak rate
-is below 40%, and Closing side flips stay inside the 10–25% band (12.3% / 16.7% /
-21.0%). Average Hearing margins widen at every skilled level, and blowouts stop
-vanishing entirely.
-
-Specialties are not a complete fix. All-Hard play still resolves more than half of
-its Hearings on a tiebreak, so recommendations 2 and 3 remain open.
-
-One trade-off is visible in the matchups:
-
-| Matchup | Before | After |
-|---|---:|---:|
-| Medium vs Easy | 94.7% | 95.7% |
-| Hard vs Medium | 73.0% | 64.0% |
-| Hard vs Easy | 96.0% | 99.0% |
-
-Hard's edge over Medium narrows because the secret two-card draft injects variance
-that a stronger player cannot always convert. The Hard-versus-Easy and
-Medium-versus-Easy gaps both widen, so the ladder still holds. Whether the Hard
-versus Medium narrowing is acceptable is a design call: it is the cost of the
-asymmetry that reduced the tie rate.
-
-## Recommended experiments
-
-1. **Finish and enable Specialties first.** *(Done — see the follow-up above.)* Persistent firm identities are the cleanest source of asymmetric priorities, and the 12 Specialty definitions already exist. Implement selection, timing windows, powers, and bonuses as one complete rules slice.
-2. **Make the 3/3 split leave a lasting fingerprint.** At present the side plays all six cards regardless of the partition. Prototype one small brief-level benefit—for example, each firm privately selects one of its three received cards as its signature argument and gains a narrowly capped personal benefit when using it. This makes the split matter after assignment without changing which cards the side receives.
-3. **Add one action-conversion resource per firm.** A once-per-game `Reframe` token that changes a fixed Lead card to Co-Counsel or vice versa would expand agency beyond the six Focus cards while keeping the deck intact.
-4. **Test the changes separately before combining them.** Run current rules, Specialties only, Reframe only, and both. A good first target is to bring the all-Medium side-tiebreak rate below 40% without pushing Closing side flips outside roughly 10–25%.
-
-Do not change marker totals or Hearing points first. The present test shows that skilled sides already keep margins extremely tight; changing only the numeric rewards is more likely to move the tie frequency than create genuinely different strategies.
+Re-run the fixed-seed suite after any deck-count, marker, Specialty, or scoring change.
+Treat a material side skew, a broken Easy → Medium → Hard ladder, or a Closing side-flip
+rate outside roughly 10–25% as a release blocker.

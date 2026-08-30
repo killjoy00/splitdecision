@@ -1,0 +1,59 @@
+{
+  "purpose": "Controlled Citation and Second Chair differentiation comparison",
+  "command": "npm run analyze:gameplay -- --profile-games 300 --matchup-games 300 --hard-games 100 --seed gameplay-analysis-v2",
+  "comparedTo": "docs/gameplay-analysis-v3.json",
+  "seed": "gameplay-analysis-v2",
+  "samples": {
+    "profileGames": 300,
+    "matchupGames": 300,
+    "hardGames": 100
+  },
+  "deck": {
+    "cards": 36,
+    "leadCards": 12,
+    "coCounselCards": 12,
+    "focusCards": 6,
+    "citationCards": 3,
+    "secondChairCards": 3
+  },
+  "profiles": {
+    "easy": {
+      "sideWins": { "plaintiff": 151, "defense": 149 },
+      "scheduledIssueRate": 0.3264814814814815,
+      "knownClosingRate": 0.16898148148148148,
+      "sideTieRate": 0.11138888888888888,
+      "closeHearingRate": 0.25972222222222224,
+      "averageSideMargin": 4.093055555555556,
+      "closingChangedSideRate": 0.16666666666666666
+    },
+    "medium": {
+      "sideWins": { "plaintiff": 149, "defense": 151 },
+      "scheduledIssueRate": 0.5506018518518518,
+      "knownClosingRate": 0.23305555555555554,
+      "sideTieRate": 0.30083333333333334,
+      "closeHearingRate": 0.5305555555555556,
+      "averageSideMargin": 1.945,
+      "closingChangedSideRate": 0.14666666666666667
+    },
+    "hard": {
+      "sideWins": { "plaintiff": 53, "defense": 47 },
+      "scheduledIssueRate": 0.5647222222222222,
+      "knownClosingRate": 0.2565277777777778,
+      "sideTieRate": 0.42583333333333334,
+      "closeHearingRate": 0.5966666666666667,
+      "averageSideMargin": 1.5891666666666666,
+      "closingChangedSideRate": 0.19
+    }
+  },
+  "matchups": {
+    "mediumVsEasy": { "games": 300, "challengerWins": 283, "challengerWinRate": 0.9433333333333334 },
+    "hardVsMedium": { "games": 100, "challengerWins": 65, "challengerWinRate": 0.65 },
+    "hardVsEasy": { "games": 100, "challengerWins": 98, "challengerWinRate": 0.98 }
+  },
+  "changeFromSpecialtiesOnly": {
+    "mediumSideTieRate": { "before": 0.3788888888888889, "after": 0.30083333333333334 },
+    "hardSideTieRate": { "before": 0.54, "after": 0.42583333333333334 },
+    "mediumAverageSideMargin": { "before": 1.781111111111111, "after": 1.945 },
+    "hardAverageSideMargin": { "before": 1.3233333333333333, "after": 1.5891666666666666 }
+  }
+}

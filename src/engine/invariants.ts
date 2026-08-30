@@ -26,7 +26,7 @@ export function assertGameInvariants(state: GameState): void {
     );
   }
 
-  invariant(state.caseDeck.length === GAME_DATA.caseCards.length, 'Case deck size must match canonical data');
+  invariant(state.caseDeck.length === 36, 'Case deck must contain 36 cards');
   invariant(new Set(state.caseDeck).size === state.caseDeck.length, 'Case deck cards must be unique');
   const canonicalCardIds = new Set(GAME_DATA.caseCards.map((card) => card.id));
   invariant(state.caseDeck.every((cardId) => canonicalCardIds.has(cardId)), 'Case deck must contain only canonical cards');

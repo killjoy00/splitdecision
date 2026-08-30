@@ -495,6 +495,63 @@
         "case_law"
       ],
       "rulesText": "In the printed Issue, choose and resolve either Lead or Co-Counsel."
+    },
+    {
+      "id": "C37",
+      "title": "Citation",
+      "form": "citation",
+      "action": "citation",
+      "issues": [],
+      "rulesText": "Choose either other card in your brief and one Issue printed on it. Place 2 of your Firm markers and 1 Joint Work there."
+    },
+    {
+      "id": "C38",
+      "title": "Citation",
+      "form": "citation",
+      "action": "citation",
+      "issues": [],
+      "rulesText": "Choose either other card in your brief and one Issue printed on it. Place 2 of your Firm markers and 1 Joint Work there."
+    },
+    {
+      "id": "C39",
+      "title": "Citation",
+      "form": "citation",
+      "action": "citation",
+      "issues": [],
+      "rulesText": "Choose either other card in your brief and one Issue printed on it. Place 2 of your Firm markers and 1 Joint Work there."
+    },
+    {
+      "id": "C40",
+      "title": "Impeachment Rule",
+      "form": "dual_issue",
+      "action": "second_chair",
+      "issues": [
+        "witnesses",
+        "case_law"
+      ],
+      "rulesText": "Choose one printed Issue. Place 1 of your Firm markers, 2 of your partner's Firm markers, and 1 Joint Work marker there."
+    },
+    {
+      "id": "C41",
+      "title": "Forensic Analysis",
+      "form": "dual_issue",
+      "action": "second_chair",
+      "issues": [
+        "evidence",
+        "experts"
+      ],
+      "rulesText": "Choose one printed Issue. Place 1 of your Firm markers, 2 of your partner's Firm markers, and 1 Joint Work marker there."
+    },
+    {
+      "id": "C42",
+      "title": "Jury Instructions",
+      "form": "dual_issue",
+      "action": "second_chair",
+      "issues": [
+        "judge",
+        "jury"
+      ],
+      "rulesText": "Choose one printed Issue. Place 1 of your Firm markers, 2 of your partner's Firm markers, and 1 Joint Work marker there."
     }
   ],
   "specialties": [
@@ -728,16 +785,20 @@
   ],
   "validation": {
     "caseCardCount": 36,
+    "caseCardDefinitions": 42,
+    "citationCards": 3,
+    "secondChairCards": 3,
     "uniqueThreeThreeSplits": 10,
-    "dualIssuePairsPerAction": 15,
+    "fixedLeadCards": 12,
+    "fixedCoCounselCards": 12,
     "focusCards": 6,
     "appearancesPerIssue": {
-      "witnesses": 11,
-      "evidence": 11,
-      "experts": 11,
-      "judge": 11,
-      "jury": 11,
-      "case_law": 11
+      "witnesses": 10,
+      "evidence": 10,
+      "experts": 10,
+      "judge": 10,
+      "jury": 10,
+      "case_law": 10
     }
   }
 }

@@ -1,5 +1,9 @@
 # Random-bot simulation baseline
 
+> Historical pre-Specialty baseline. The current protocol-v2 validation report is
+> `docs/milestone-0-simulation-v2.json`; current interpretation is documented in
+> `docs/ENGINE_STATUS.md` and `docs/GAMEPLAY_ANALYSIS.md`.
+
 Command:
 
 ```bash

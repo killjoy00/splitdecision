@@ -1,4 +1,11 @@
-## Summary
+# Historical initial pull-request description
+
+> This file records the first Milestone 0 engine pull request and is intentionally
+> preserved as history. Its test totals, disabled features, and known limits are not
+> the current product status. See `README.md`, `docs/ENGINE_STATUS.md`, and
+> `docs/ROADMAP.md` for the live implementation.
+
+## Original summary
 
 Establish the first playable rules-engine foundation for **Split Decision**.
 
