@@ -1,4 +1,8 @@
-export { GAME_DATA } from '../data/gameData.js';
+export {
+  CURRENT_CASE_CARD_IDS,
+  GAME_DATA,
+  LEGACY_CASE_CARD_IDS,
+} from '../data/gameData.js';
 export {
   MEDIUM_BOT_WEIGHTS,
   chooseBotAction,

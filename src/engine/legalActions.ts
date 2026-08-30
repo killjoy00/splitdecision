@@ -12,6 +12,7 @@ import {
 import {
   SEAT_ORDER,
   type CaseActionType,
+  type FocusActionType,
   type GameAction,
   type GameState,
   type IssueId,
@@ -120,15 +121,15 @@ export function getLegalActions(state: GameState, actor: SeatId): GameAction[] {
     if (!card) throw new Error(`Unknown Case card ${docketCard.cardId}`);
 
     const retargets = canRetargetAnyIssue(state, actor);
-    const targetIssues = retargets ? [...GAME_DATA.issueOrder] : card.issues;
 
     if (card.form === 'focus') {
       const printedIssue = card.issues[0];
       if (!printedIssue) throw new Error(`Focus card ${card.id} has no Issue`);
+      const targetIssues = retargets ? [...GAME_DATA.issueOrder] : card.issues;
       for (const chosenIssue of targetIssues) {
         if (!canPlaceInIssue(state, chosenIssue)) continue;
         const offBook = chosenIssue !== printedIssue;
-        for (const focusAction of ['lead', 'co_counsel'] as CaseActionType[]) {
+        for (const focusAction of ['lead', 'co_counsel'] as FocusActionType[]) {
           if (!offBook) {
             actions.push({ type: 'play_docket_card', actor, slot, chosenIssue, focusAction });
           }
@@ -144,8 +145,37 @@ export function getLegalActions(state: GameState, actor: SeatId): GameAction[] {
           }
         }
       }
+    } else if (card.form === 'citation') {
+      for (const citedSlot of assignedSlots) {
+        if (citedSlot === slot) continue;
+        const citedDocket = state.docket.find((entry) => entry.slot === citedSlot);
+        const citedCard = citedDocket ? CARD_BY_ID.get(citedDocket.cardId) : null;
+        if (!citedCard || citedCard.issues.length === 0) continue;
+        const targetIssues = retargets ? [...GAME_DATA.issueOrder] : citedCard.issues;
+        for (const chosenIssue of targetIssues) {
+          if (!canPlaceInIssue(state, chosenIssue)) continue;
+          const offBook = !citedCard.issues.includes(chosenIssue);
+          if (!offBook) {
+            actions.push({ type: 'play_docket_card', actor, slot, chosenIssue, citedSlot });
+          }
+          if (offBook || canUsePowerOn(state, actor, chosenIssue, 'citation')) {
+            actions.push({
+              type: 'play_docket_card',
+              actor,
+              slot,
+              chosenIssue,
+              citedSlot,
+              useSpecialty: true,
+            });
+          }
+        }
+      }
     } else {
-      const actionType = card.action === 'co_counsel' ? 'co_counsel' : 'lead';
+      if (card.action === 'choose' || card.action === 'citation') {
+        throw new Error(`Dual-Issue card ${card.id} has an invalid action`);
+      }
+      const actionType: CaseActionType = card.action;
+      const targetIssues = retargets ? [...GAME_DATA.issueOrder] : card.issues;
       for (const chosenIssue of targetIssues) {
         if (!canPlaceInIssue(state, chosenIssue)) continue;
         const offBook = !card.issues.includes(chosenIssue);

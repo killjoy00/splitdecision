@@ -34,6 +34,8 @@ export interface BotGameSummary {
   actions: number;
   leadActions: number;
   coCounselActions: number;
+  citationActions: number;
+  secondChairActions: number;
   scheduledIssueActions: number;
   knownClosingActions: number;
   postHearingActions: number;
@@ -57,6 +59,8 @@ export type RandomGameSummary = BotGameSummary;
 export interface GameplayMetrics {
   leadRate: number;
   coCounselRate: number;
+  citationRate: number;
+  secondChairRate: number;
   scheduledIssueRate: number;
   knownClosingRate: number;
   postHearingClosingRate: number;
@@ -97,6 +101,8 @@ export interface MatchupSummary extends GameplayMetrics {
 interface AggregateCounters {
   leadActions: number;
   coCounselActions: number;
+  citationActions: number;
+  secondChairActions: number;
   scheduledIssueActions: number;
   knownClosingActions: number;
   postHearingActions: number;
@@ -126,6 +132,8 @@ function emptyCounters(): AggregateCounters {
   return {
     leadActions: 0,
     coCounselActions: 0,
+    citationActions: 0,
+    secondChairActions: 0,
     scheduledIssueActions: 0,
     knownClosingActions: 0,
     postHearingActions: 0,
@@ -148,6 +156,8 @@ function emptyCounters(): AggregateCounters {
 function addGame(counters: AggregateCounters, game: BotGameSummary): void {
   counters.leadActions += game.leadActions;
   counters.coCounselActions += game.coCounselActions;
+  counters.citationActions += game.citationActions;
+  counters.secondChairActions += game.secondChairActions;
   counters.scheduledIssueActions += game.scheduledIssueActions;
   counters.knownClosingActions += game.knownClosingActions;
   counters.postHearingActions += game.postHearingActions;
@@ -179,10 +189,15 @@ function rate(numerator: number, denominator: number): number {
 }
 
 function metrics(counters: AggregateCounters, games: number): GameplayMetrics {
-  const totalCardActions = counters.leadActions + counters.coCounselActions;
+  const totalCardActions = counters.leadActions
+    + counters.coCounselActions
+    + counters.citationActions
+    + counters.secondChairActions;
   return {
     leadRate: rate(counters.leadActions, totalCardActions),
     coCounselRate: rate(counters.coCounselActions, totalCardActions),
+    citationRate: rate(counters.citationActions, totalCardActions),
+    secondChairRate: rate(counters.secondChairActions, totalCardActions),
     scheduledIssueRate: rate(counters.scheduledIssueActions, totalCardActions),
     knownClosingRate: rate(counters.knownClosingActions, totalCardActions),
     postHearingClosingRate: rate(counters.postHearingClosingActions, counters.postHearingActions),
@@ -215,6 +230,8 @@ export function runBotGame(seed: string, controllers: BotControllers): BotGameSu
   let actionCount = 0;
   let leadActions = 0;
   let coCounselActions = 0;
+  let citationActions = 0;
+  let secondChairActions = 0;
   let scheduledIssueActions = 0;
   let knownClosingActions = 0;
   let postHearingActions = 0;
@@ -240,6 +257,8 @@ export function runBotGame(seed: string, controllers: BotControllers): BotGameSu
       const actionType = action.focusAction ?? card?.action;
       if (actionType === 'lead') leadActions += 1;
       else if (actionType === 'co_counsel') coCounselActions += 1;
+      else if (actionType === 'citation') citationActions += 1;
+      else if (actionType === 'second_chair') secondChairActions += 1;
       else throw new Error(`Unable to classify Case action in slot ${action.slot}`);
 
       const currentHearings: readonly IssueId[] = state.hearingSchedule[state.round - 1] ?? [];
@@ -307,6 +326,8 @@ export function runBotGame(seed: string, controllers: BotControllers): BotGameSu
     actions: actionCount,
     leadActions,
     coCounselActions,
+    citationActions,
+    secondChairActions,
     scheduledIssueActions,
     knownClosingActions,
     postHearingActions,

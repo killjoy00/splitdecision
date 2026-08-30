@@ -431,6 +431,63 @@ export const GAME_DATA: GameData = {
         "case_law"
       ],
       "rulesText": "In the printed Issue, choose and resolve either Lead or Co-Counsel."
+    },
+    {
+      "id": "C37",
+      "title": "Citation",
+      "form": "citation",
+      "action": "citation",
+      "issues": [],
+      "rulesText": "Choose either other card in your brief and one Issue printed on it. Place 2 of your Firm markers and 1 Joint Work there."
+    },
+    {
+      "id": "C38",
+      "title": "Citation",
+      "form": "citation",
+      "action": "citation",
+      "issues": [],
+      "rulesText": "Choose either other card in your brief and one Issue printed on it. Place 2 of your Firm markers and 1 Joint Work there."
+    },
+    {
+      "id": "C39",
+      "title": "Citation",
+      "form": "citation",
+      "action": "citation",
+      "issues": [],
+      "rulesText": "Choose either other card in your brief and one Issue printed on it. Place 2 of your Firm markers and 1 Joint Work there."
+    },
+    {
+      "id": "C40",
+      "title": "Impeachment Rule",
+      "form": "dual_issue",
+      "action": "second_chair",
+      "issues": [
+        "witnesses",
+        "case_law"
+      ],
+      "rulesText": "Choose one printed Issue. Place 1 of your Firm markers, 2 of your partner's Firm markers, and 1 Joint Work marker there."
+    },
+    {
+      "id": "C41",
+      "title": "Forensic Analysis",
+      "form": "dual_issue",
+      "action": "second_chair",
+      "issues": [
+        "evidence",
+        "experts"
+      ],
+      "rulesText": "Choose one printed Issue. Place 1 of your Firm markers, 2 of your partner's Firm markers, and 1 Joint Work marker there."
+    },
+    {
+      "id": "C42",
+      "title": "Jury Instructions",
+      "form": "dual_issue",
+      "action": "second_chair",
+      "issues": [
+        "judge",
+        "jury"
+      ],
+      "rulesText": "Choose one printed Issue. Place 1 of your Firm markers, 2 of your partner's Firm markers, and 1 Joint Work marker there."
     }
   ],
   "specialties": [
@@ -558,3 +615,14 @@ export const GAME_DATA: GameData = {
     "case_law"
   ]
 };
+
+export const LEGACY_CASE_CARD_IDS = GAME_DATA.caseCards
+  .filter((card) => Number.parseInt(card.id.slice(1), 10) <= 36)
+  .map((card) => card.id);
+
+const REPLACED_CASE_CARD_IDS = new Set(['C01', 'C10', 'C12', 'C19', 'C26', 'C29']);
+
+/** The 36-card deck dealt to newly created games. Legacy card data remains for active rooms. */
+export const CURRENT_CASE_CARD_IDS = GAME_DATA.caseCards
+  .filter((card) => !REPLACED_CASE_CARD_IDS.has(card.id))
+  .map((card) => card.id);

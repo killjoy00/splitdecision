@@ -1,0 +1,40 @@
+{
+  "purpose": "Current-deck execution and rough seat-symmetry validation",
+  "command": "npm run simulate -- --games 10000 --seed citation-second-chair-balance",
+  "games": 10000,
+  "seedPrefix": "citation-second-chair-balance",
+  "controllers": {
+    "P1": "easy",
+    "D1": "easy",
+    "P2": "easy",
+    "D2": "easy"
+  },
+  "firmWins": {
+    "P1": 2569,
+    "D1": 2502,
+    "P2": 2427,
+    "D2": 2502
+  },
+  "sideWins": {
+    "plaintiff": 4996,
+    "defense": 5004
+  },
+  "leadRate": 0.416025,
+  "coCounselRate": 0.41730833333333334,
+  "citationRate": 0.08333333333333333,
+  "secondChairRate": 0.08333333333333333,
+  "scheduledIssueRate": 0.3343347222222222,
+  "knownClosingRate": 0.16654444444444444,
+  "postHearingClosingRate": 0.1657098799058019,
+  "sideTieRate": 0.11083333333333334,
+  "internalTieRate": 0.0939,
+  "supportScoreRate": 0.891,
+  "closeHearingRate": 0.27421666666666666,
+  "blowoutHearingRate": 0.22968333333333332,
+  "averageSideMargin": 4.088916666666667,
+  "averageScoreRange": 9.0404,
+  "highestScoreEliminatedRate": 0.1096,
+  "closingChangedSideRate": 0.1308,
+  "closingChangedFirmRate": 0.3048,
+  "interpretation": "No invariant failure occurred. Easy bots are random legal actors, so this validates execution and rough symmetry rather than strategic or human balance."
+}

@@ -1,4 +1,4 @@
-import { GAME_DATA } from '../data/gameData.js';
+import { CURRENT_CASE_CARD_IDS, GAME_DATA } from '../data/gameData.js';
 import { appendEvent } from './events.js';
 import { createRandom, randomItem, shuffled } from './random.js';
 import { SPECIALTY_OPTIONS_PER_SEAT } from './specialties.js';
@@ -39,6 +39,28 @@ function pairIssues(issues: IssueId[]): Array<[IssueId, IssueId]> {
     [issues[2] as IssueId, issues[3] as IssueId],
     [issues[4] as IssueId, issues[5] as IssueId],
   ];
+}
+
+function createCaseDeck(random: ReturnType<typeof createRandom>): string[] {
+  const deck = shuffled(CURRENT_CASE_CARD_IDS, random);
+  const citationIds = new Set(
+    GAME_DATA.caseCards.filter((card) => card.form === 'citation').map((card) => card.id),
+  );
+  for (let start = 0; start < deck.length; start += DEFAULT_RULES.docketSize) {
+    const citationIndexes = deck
+      .slice(start, start + DEFAULT_RULES.docketSize)
+      .map((cardId, offset) => citationIds.has(cardId) ? start + offset : -1)
+      .filter((index) => index >= 0);
+    if (citationIndexes.length < 3) continue;
+    const swapIndex = deck.findIndex(
+      (cardId, index) => (index < start || index >= start + DEFAULT_RULES.docketSize)
+        && !citationIds.has(cardId),
+    );
+    if (swapIndex < 0) throw new Error('Unable to separate Citation cards across Dockets');
+    const citationIndex = citationIndexes[2] as number;
+    [deck[citationIndex], deck[swapIndex]] = [deck[swapIndex] as string, deck[citationIndex] as string];
+  }
+  return deck;
 }
 
 export function createBriefState(divider: SeatId, side: SideId): BriefState {
@@ -150,7 +172,7 @@ export function createGame(options: CreateGameOptions): GameState {
     players,
     issues,
     hearingSchedule,
-    caseDeck: shuffled(GAME_DATA.caseCards.map((card) => card.id), random),
+    caseDeck: createCaseDeck(random),
     caseDeckIndex: 0,
     docket: [],
     briefs: {

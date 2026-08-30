@@ -16,9 +16,10 @@ export type SideId = (typeof SIDE_IDS)[number];
 export type SeatId = (typeof SEAT_ORDER)[number];
 export type Slot = (typeof SLOTS)[number];
 export type BotLevel = 'human' | 'easy' | 'medium' | 'hard';
-export type CaseActionType = 'lead' | 'co_counsel';
+export type FocusActionType = 'lead' | 'co_counsel';
+export type CaseActionType = FocusActionType | 'citation' | 'second_chair';
 export type CaseCardAction = CaseActionType | 'choose';
-export type CaseCardForm = 'dual_issue' | 'focus';
+export type CaseCardForm = 'dual_issue' | 'focus' | 'citation';
 export type LeadCreditSource = 'hearing' | 'closing';
 export type SpecialtyPowerTiming =
   | 'before_issue_scores'
@@ -253,7 +254,8 @@ export type GameAction =
       actor: SeatId;
       slot: Slot;
       chosenIssue: IssueId;
-      focusAction?: CaseActionType;
+      focusAction?: FocusActionType;
+      citedSlot?: Slot;
       useSpecialty?: boolean;
     };
 

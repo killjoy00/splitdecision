@@ -21,7 +21,7 @@ The playable Milestone 0 build includes:
 - seeded setup and mirrored Hearing schedule
 - secret Specialty draft, one-time powers, and endgame bonuses
 - all ten legal 3/3 brief partitions
-- Lead, Co-Counsel, and Focus card resolution
+- Lead, Co-Counsel, Focus, Citation, and Second Chair card resolution
 - normal Hearing and Closing Argument scoring
 - team-floor verdict calculation
 - player-view redaction for secret Closing Argument information
@@ -43,7 +43,18 @@ Bonuses are paid after Closing Arguments score and before the verdict, so they
 count toward the team floor. Set `rules.specialtiesEnabled: false` to play the
 earlier base-rules game.
 
-After the Specialty timing and hidden-information fixes, the engine completed a fresh 10,000-game random-bot validation without an invariant failure. Plaintiff won 50.07% of games, Defense won 49.93%, and each firm won between 24.77% and 25.21%. The protocol-v2 report, including per-Specialty offer, pick, use, bonus, and win counts, is checked in at `docs/milestone-0-simulation-v2.json`. It validates execution and rough seat symmetry, not strategic balance; earlier reports describe the superseded rules implementation.
+The current deck swaps three fixed Lead cards for Citation and three fixed
+Co-Counsel cards for Second Chair. Citation borrows an Issue from either other card
+in its brief; Second Chair places 1 acting-firm marker, 2 partner markers, and 1 Joint
+Work. The six swaps form a balanced cycle across all Issues, while legacy definitions
+remain loadable so an in-progress room is not reinterpreted after deployment.
+
+The current engine completed a 10,000-game Easy-bot validation without an invariant
+failure. Plaintiff won 49.96%, Defense won 50.04%, and each firm won 24.27%–25.69%.
+The compact report is `docs/milestone-0-simulation-v3.json`. Controlled Medium and
+Hard tests reduced side-tiebreak Hearings from 37.9% / 54.0% to 30.1% / 42.6% while
+preserving the difficulty ladder; see `docs/GAMEPLAY_ANALYSIS.md`. These are execution,
+symmetry, and bot-strategy signals—not a substitute for human balance testing.
 
 See [`docs/ENGINE_STATUS.md`](docs/ENGINE_STATUS.md) for the current implementation and validation status, [`docs/GAMEPLAY_ANALYSIS.md`](docs/GAMEPLAY_ANALYSIS.md) for measured strategic behavior, and [`docs/ROADMAP.md`](docs/ROADMAP.md) for the next playtest and gameplay experiments. Documents explicitly marked historical are retained as implementation records and should not be read as the current feature set.
 

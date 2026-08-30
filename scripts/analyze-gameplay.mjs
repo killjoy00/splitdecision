@@ -1,4 +1,5 @@
 import {
+  CURRENT_CASE_CARD_IDS,
   GAME_DATA,
   simulateBotGames,
   simulateMatchup,
@@ -23,18 +24,21 @@ const profileGames = positiveInteger('--profile-games', 300);
 const matchupGames = positiveInteger('--matchup-games', 300);
 const hardGames = positiveInteger('--hard-games', 80);
 const seed = valueAfter('--seed', 'gameplay-analysis-v1');
-const fixedCards = GAME_DATA.caseCards.filter((card) => card.form === 'dual_issue');
-const flexibleCards = GAME_DATA.caseCards.filter((card) => card.form === 'focus');
+const currentCards = GAME_DATA.caseCards.filter((card) => CURRENT_CASE_CARD_IDS.includes(card.id));
+const fixedCards = currentCards.filter((card) => card.form === 'dual_issue');
+const flexibleCards = currentCards.filter((card) => card.form === 'focus');
 
 const report = {
   seed,
   samples: { profileGames, matchupGames, hardGames },
   deck: {
-    cards: GAME_DATA.caseCards.length,
+    cards: currentCards.length,
     fixedActionCards: fixedCards.length,
     flexibleActionCards: flexibleCards.length,
-    leadCards: GAME_DATA.caseCards.filter((card) => card.action === 'lead').length,
-    coCounselCards: GAME_DATA.caseCards.filter((card) => card.action === 'co_counsel').length,
+    leadCards: currentCards.filter((card) => card.action === 'lead').length,
+    coCounselCards: currentCards.filter((card) => card.action === 'co_counsel').length,
+    citationCards: currentCards.filter((card) => card.action === 'citation').length,
+    secondChairCards: currentCards.filter((card) => card.action === 'second_chair').length,
     specialtiesInData: GAME_DATA.specialties.length,
   },
   profiles: {

@@ -29,6 +29,7 @@ import {
   SLOTS,
   type ApplyActionResult,
   type CaseActionType,
+  type FocusActionType,
   type GameAction,
   type GameState,
   type IssueId,
@@ -121,7 +122,11 @@ function parseAction(value: unknown): { action: GameAction } | { error: string }
     if (candidate.useSpecialty !== undefined && typeof candidate.useSpecialty !== 'boolean') {
       return { error: 'useSpecialty must be a boolean when supplied' };
     }
-    const focusAction = candidate.focusAction as CaseActionType | undefined;
+    if (candidate.citedSlot !== undefined
+        && !SLOTS.includes(candidate.citedSlot as (typeof SLOTS)[number])) {
+      return { error: 'citedSlot must be a valid Docket slot when supplied' };
+    }
+    const focusAction = candidate.focusAction as FocusActionType | undefined;
     return {
       action: {
         type: 'play_docket_card',
@@ -129,6 +134,9 @@ function parseAction(value: unknown): { action: GameAction } | { error: string }
         slot: candidate.slot as (typeof SLOTS)[number],
         chosenIssue: candidate.chosenIssue as IssueId,
         ...(focusAction === undefined ? {} : { focusAction }),
+        ...(candidate.citedSlot === undefined
+          ? {}
+          : { citedSlot: candidate.citedSlot as (typeof SLOTS)[number] }),
         ...(candidate.useSpecialty ? { useSpecialty: true } : {}),
       },
     };
@@ -321,6 +329,7 @@ function validateCardResolution(
 
   let actionType: CaseActionType;
   if (card.form === 'focus') {
+    if (action.citedSlot !== undefined) return fail('unexpected_cited_slot', 'Focus cards cannot cite another card');
     if (action.focusAction !== 'lead' && action.focusAction !== 'co_counsel') {
       return fail('focus_action_required', 'Focus cards require Lead or Co-Counsel selection');
     }
@@ -328,12 +337,30 @@ function validateCardResolution(
       return fail('illegal_issue', 'Focus cards must use their printed Issue');
     }
     actionType = action.focusAction;
+  } else if (card.form === 'citation') {
+    if (action.focusAction !== undefined) return fail('unexpected_focus_action', 'Citation has a fixed action type');
+    if (action.citedSlot === undefined) return fail('cited_slot_required', 'Citation requires another card in your brief');
+    if (action.citedSlot === action.slot || !assigned.includes(action.citedSlot)) {
+      return fail('illegal_cited_slot', 'Citation must reference either other card in your brief');
+    }
+    const citedDocket = state.docket.find((entry) => entry.slot === action.citedSlot);
+    const citedCard = citedDocket ? CARD_BY_ID.get(citedDocket.cardId) : null;
+    if (!citedCard || citedCard.issues.length === 0) {
+      return fail('illegal_cited_slot', 'Citation must reference a card with a printed Issue');
+    }
+    if (!citedCard.issues.includes(action.chosenIssue) && !retargeting) {
+      return fail('illegal_issue', `${action.chosenIssue} is not printed on ${citedCard.title}`);
+    }
+    actionType = 'citation';
   } else {
+    if (action.citedSlot !== undefined) return fail('unexpected_cited_slot', 'Only Citation references another card');
     if (action.focusAction !== undefined) return fail('unexpected_focus_action', 'Dual-Issue cards have a fixed action type');
     if (!card.issues.includes(action.chosenIssue) && !retargeting) {
       return fail('illegal_issue', `${action.chosenIssue} is not printed on ${card.title}`);
     }
-    if (card.action !== 'lead' && card.action !== 'co_counsel') return fail('invalid_card_data', `${card.id} has an invalid action`);
+    if (card.action !== 'lead' && card.action !== 'co_counsel' && card.action !== 'second_chair') {
+      return fail('invalid_card_data', `${card.id} has an invalid action`);
+    }
     actionType = card.action;
   }
 
@@ -490,10 +517,17 @@ export function applyAction(state: GameState, value: unknown): ApplyActionResult
       const issue = next.issues[chosenIssue];
       if (actionType === 'lead') {
         issue.firmMarkers[action.actor] += next.rules.leadOwnMarkers;
-      } else {
+      } else if (actionType === 'co_counsel') {
         issue.firmMarkers[action.actor] += next.rules.coCounselOwnMarkers;
         issue.firmMarkers[partner] += next.rules.coCounselPartnerMarkers;
         issue.jointWork[side] += next.rules.coCounselJointWork;
+      } else if (actionType === 'citation') {
+        issue.firmMarkers[action.actor] += 2;
+        issue.jointWork[side] += 1;
+      } else {
+        issue.firmMarkers[action.actor] += 1;
+        issue.firmMarkers[partner] += 2;
+        issue.jointWork[side] += 1;
       }
 
       if (action.useSpecialty === true) {
@@ -523,6 +557,7 @@ export function applyAction(state: GameState, value: unknown): ApplyActionResult
         side,
         chosenIssue,
         actionType,
+        ...(action.citedSlot === undefined ? {} : { citedSlot: action.citedSlot }),
       }, action.actor);
 
       if (next.actionsResolvedThisRound === 12) {

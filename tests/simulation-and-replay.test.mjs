@@ -79,7 +79,15 @@ test('batch simulations return complete aggregate metrics', () => {
     summary.firmWins.P1 + summary.firmWins.D1 + summary.firmWins.P2 + summary.firmWins.D2,
     100,
   );
-  assert.ok(Math.abs(summary.leadRate + summary.coCounselRate - 1) < 1e-12);
+  assert.ok(Math.abs(
+    summary.leadRate
+      + summary.coCounselRate
+      + summary.citationRate
+      + summary.secondChairRate
+      - 1,
+  ) < 1e-12);
+  assert.ok(summary.citationRate > 0);
+  assert.ok(summary.secondChairRate > 0);
   assert.ok(summary.sideTieRate >= 0 && summary.sideTieRate <= 1);
   assert.ok(summary.internalTieRate >= 0 && summary.internalTieRate <= 1);
   assert.ok(summary.scheduledIssueRate >= 0 && summary.scheduledIssueRate <= 1);
@@ -194,7 +202,7 @@ test('Medium and Hard ignore every hidden opponent input', () => {
 
 test('difficulty matchups establish a deterministic skill gradient', () => {
   const medium = simulateMatchup(20, 'medium', 'easy', 'gradient-medium-easy');
-  const hard = simulateMatchup(20, 'hard', 'medium', 'gradient-hard-medium');
+  const hard = simulateMatchup(30, 'hard', 'medium', 'gradient-hard-medium-v2');
   assert.ok(medium.challengerWinRate >= 0.65, JSON.stringify(medium));
   assert.ok(hard.challengerWinRate >= 0.55, JSON.stringify(hard));
 });

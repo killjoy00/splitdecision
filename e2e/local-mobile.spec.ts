@@ -12,6 +12,8 @@ test('mobile setup exposes options and full card rules through the split', async
   await expect(rules.getByRole('heading', { name: 'Your partner is part of your score.' })).toBeVisible();
   await expect(rules.getByText('min(Firm 1, Firm 2)')).toBeVisible();
   await expect(rules.getByText('More Joint Work wins a tied Hearing.', { exact: false })).toBeVisible();
+  await expect(rules.getByText('Choose either other card in your three-card brief', { exact: false })).toBeVisible();
+  await expect(rules.getByText('add 1 of yours, 2 partner markers', { exact: false })).toBeVisible();
 
   const seed = page.getByLabel('Case seed').first();
   const originalSeed = await seed.inputValue();

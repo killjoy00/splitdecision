@@ -6,6 +6,7 @@ import {
   applyAction,
   createGame,
   getLegalActions,
+  getPendingActors,
   getPlayerView,
   hashGameState,
   hashPublicGameState,
@@ -89,15 +90,124 @@ test('resolving a Docket card applies the printed action and records the side-sp
     assert.equal(after.firmMarkers[actor] - before.firmMarkers[actor], 3);
     assert.equal(after.firmMarkers[partner] - before.firmMarkers[partner], 0);
     assert.equal(after.jointWork[side] - before.jointWork[side], 0);
-  } else {
+  } else if (actionType === 'co_counsel') {
     assert.equal(after.firmMarkers[actor] - before.firmMarkers[actor], 2);
     assert.equal(after.firmMarkers[partner] - before.firmMarkers[partner], 1);
+    assert.equal(after.jointWork[side] - before.jointWork[side], 1);
+  } else if (actionType === 'citation') {
+    assert.equal(after.firmMarkers[actor] - before.firmMarkers[actor], 2);
+    assert.equal(after.firmMarkers[partner] - before.firmMarkers[partner], 0);
+    assert.equal(after.jointWork[side] - before.jointWork[side], 1);
+  } else {
+    assert.equal(actionType, 'second_chair');
+    assert.equal(after.firmMarkers[actor] - before.firmMarkers[actor], 1);
+    assert.equal(after.firmMarkers[partner] - before.firmMarkers[partner], 2);
     assert.equal(after.jointWork[side] - before.jointWork[side], 1);
   }
   assert.equal(
     state.docket.find((entry) => entry.slot === action.slot).usedBy[side],
     actor,
   );
+});
+
+function advanceUntilCaseAction(seed, actionType) {
+  let state = createGame({ seed, rules: { specialtiesEnabled: false } });
+  for (let guard = 0; guard < 500 && state.phase !== 'complete'; guard += 1) {
+    const actor = getPendingActors(state)[0];
+    assert.ok(actor, `no pending actor while seeking ${actionType}`);
+    const legal = getLegalActions(state, actor);
+    const action = legal.find((candidate) => {
+      if (candidate.type !== 'play_docket_card') return false;
+      const docket = state.docket.find((entry) => entry.slot === candidate.slot);
+      return CARD_BY_ID.get(docket?.cardId)?.action === actionType;
+    });
+    if (action) return { state, actor, action };
+    assert.ok(legal[0]);
+    state = applyOrThrow(state, legal[0]);
+  }
+  assert.fail(`never found a ${actionType} action`);
+}
+
+test('Citation inherits only Issues printed on the other cards in its brief', () => {
+  const { state, actor, action } = advanceUntilCaseAction('citation-rules', 'citation');
+  const side = state.players[actor].sideId;
+  const assigned = state.briefs[side].assignments[actor];
+  const citationActions = getLegalActions(state, actor).filter(
+    (candidate) => candidate.type === 'play_docket_card' && candidate.slot === action.slot,
+  );
+  assert.ok(citationActions.length > 0);
+  for (const candidate of citationActions) {
+    assert.ok(candidate.citedSlot);
+    assert.notEqual(candidate.citedSlot, candidate.slot);
+    assert.ok(assigned.includes(candidate.citedSlot));
+    const citedDocket = state.docket.find((entry) => entry.slot === candidate.citedSlot);
+    const citedCard = CARD_BY_ID.get(citedDocket.cardId);
+    assert.ok(citedCard.issues.includes(candidate.chosenIssue));
+  }
+
+  const citedDocket = state.docket.find((entry) => entry.slot === action.citedSlot);
+  const citedCard = CARD_BY_ID.get(citedDocket.cardId);
+  const illegalIssue = GAME_DATA.issueOrder.find((issue) => !citedCard.issues.includes(issue));
+  const rejected = applyAction(state, { ...action, chosenIssue: illegalIssue });
+  assert.equal(rejected.ok, false);
+  assert.equal(rejected.error.code, 'illegal_issue');
+
+  const before = structuredClone(state.issues[action.chosenIssue]);
+  const played = applyOrThrow(state, action);
+  const after = played.issues[action.chosenIssue];
+  assert.equal(after.firmMarkers[actor] - before.firmMarkers[actor], 2);
+  assert.equal(after.firmMarkers[state.players[actor].partnerSeatId] - before.firmMarkers[state.players[actor].partnerSeatId], 0);
+  assert.equal(after.jointWork[side] - before.jointWork[side], 1);
+});
+
+test('moving Citation between briefs changes its available Issues', () => {
+  const { state, actor, action } = advanceUntilCaseAction('citation-differentiation', 'citation');
+  const side = state.players[actor].sideId;
+  const partner = state.players[actor].partnerSeatId;
+  const otherSlots = state.docket.map((entry) => entry.slot).filter((slot) => slot !== action.slot);
+  const targetSets = new Set();
+
+  for (let left = 0; left < otherSlots.length; left += 1) {
+    for (let right = left + 1; right < otherSlots.length; right += 1) {
+      const candidate = structuredClone(state);
+      const actorSlots = [action.slot, otherSlots[left], otherSlots[right]];
+      candidate.briefs[side].assignments[actor] = actorSlots;
+      candidate.briefs[side].assignments[partner] = candidate.docket
+        .map((entry) => entry.slot)
+        .filter((slot) => !actorSlots.includes(slot));
+      const issues = [...new Set(getLegalActions(candidate, actor)
+        .filter((entry) => entry.type === 'play_docket_card' && entry.slot === action.slot)
+        .map((entry) => entry.chosenIssue))]
+        .sort();
+      if (issues.length > 0) targetSets.add(issues.join(','));
+    }
+  }
+
+  assert.ok(targetSets.size >= 2, `expected brief composition to change Citation targets: ${[...targetSets]}`);
+});
+
+test('Citation rejects a missing, self, or out-of-brief reference', () => {
+  const { state, action } = advanceUntilCaseAction('citation-guard', 'citation');
+  for (const malformed of [
+    { ...action, citedSlot: undefined },
+    { ...action, citedSlot: action.slot },
+    { ...action, citedSlot: state.docket.find((entry) => !state.briefs[state.players[action.actor].sideId].assignments[action.actor].includes(entry.slot)).slot },
+  ]) {
+    const result = applyAction(state, malformed);
+    assert.equal(result.ok, false);
+  }
+});
+
+test('Second Chair gives the partner two markers and the acting firm one', () => {
+  const { state, actor, action } = advanceUntilCaseAction('second-chair-rules', 'second_chair');
+  const side = state.players[actor].sideId;
+  const partner = state.players[actor].partnerSeatId;
+  const before = structuredClone(state.issues[action.chosenIssue]);
+  const played = applyOrThrow(state, action);
+  const after = played.issues[action.chosenIssue];
+  assert.equal(after.firmMarkers[actor] - before.firmMarkers[actor], 1);
+  assert.equal(after.firmMarkers[partner] - before.firmMarkers[partner], 2);
+  assert.equal(after.jointWork[side] - before.jointWork[side], 1);
 });
 
 test('private Closing Argument and committed split information is redacted', () => {

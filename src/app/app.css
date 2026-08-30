@@ -218,6 +218,8 @@ button.remote-seat:hover:not(:disabled) { transform: translateY(-2px); border-co
 .card-action { grid-column: 2; width: fit-content; margin-top: 6px; padding: 4px 7px; border-radius: 5px; color: #496074; background: #edf1f4; font-size: 0.64rem; font-weight: 800; text-transform: uppercase; }
 .card-action-lead { color: #744f0c; background: #f7e8bc; }
 .card-action-co_counsel { color: #235d55; background: #dcefeb; }
+.card-action-citation { color: #375c78; background: #e1eef7; }
+.card-action-second_chair { color: #7a3f61; background: #f4e4ed; }
 .selection-mark { position: absolute; top: 11px; right: 11px; color: var(--gold); font-size: 0.66rem; font-weight: 850; text-transform: uppercase; }
 .brief-preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 13px; }
 .brief-preview { display: flex; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: 9px; color: var(--muted); background: var(--paper-deep); }
@@ -251,6 +253,9 @@ button.remote-seat:hover:not(:disabled) { transform: translateY(-2px); border-co
 .action-button strong { margin-top: 3px; font-size: 0.72rem; text-transform: uppercase; }
 .action-lead strong { color: #8b6115; }
 .action-co_counsel strong { color: #24665d; }
+.action-citation strong { color: #375c78; }
+.action-second_chair strong { color: #8b466b; }
+.action-reference { display: block; margin-top: 4px; color: var(--muted); font-size: 0.62rem; line-height: 1.3; }
 .resolved-label { margin: 18px 0 0; color: var(--muted); font-size: 0.8rem; font-weight: 750; }
 
 /* Public board */
@@ -359,7 +364,7 @@ button.remote-seat:hover:not(:disabled) { transform: translateY(-2px); border-co
 .primer-rounds li > span, .rules-step-grid article > span { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: #fff; background: var(--ink); font-size: 0.68rem; font-weight: 850; }
 .primer-rounds strong { display: block; margin: 4px 0 5px; font-family: Georgia, serif; font-size: 1.02rem; }
 .primer-rounds p { margin: 0; color: var(--muted); font-size: 0.74rem; line-height: 1.45; }
-.primer-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 18px clamp(18px, 3vw, 28px) 24px; background: #f5f1e8; }
+.primer-actions { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; padding: 18px clamp(18px, 3vw, 28px) 24px; background: #f5f1e8; }
 .primer-action { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; align-items: center; padding: 15px 16px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
 .primer-action > span { grid-row: span 2; width: fit-content; padding: 5px 8px; border-radius: 6px; font-size: 0.67rem; font-weight: 850; text-transform: uppercase; }
 .primer-action > strong { font-size: 0.82rem; }
@@ -367,6 +372,8 @@ button.remote-seat:hover:not(:disabled) { transform: translateY(-2px); border-co
 .primer-action-lead > span { color: #744f0c; background: #f7e8bc; }
 .primer-action-counsel > span { color: #235d55; background: #dcefeb; }
 .primer-action-focus > span { color: #4c416f; background: #ece8f7; }
+.primer-action-citation > span { color: #375c78; background: #e1eef7; }
+.primer-action-second-chair > span { color: #7a3f61; background: #f4e4ed; }
 
 /* Complete rules reference */
 .rules-guide { scroll-margin-top: 14px; margin-top: 18px; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: rgba(255,253,248,0.94); box-shadow: 0 10px 28px rgba(23,35,56,0.045); }

@@ -17,6 +17,8 @@ import {
   type DocketCardState,
   type AutomatedBotLevel,
   type BotLevel,
+  type CaseActionType,
+  type CaseCardData,
   type GameAction,
   type GameState,
   type HearingResult,
@@ -118,6 +120,20 @@ function loadSession(): SavedSession | null {
 
 function issueName(issueId: IssueId): string {
   return ISSUE_BY_ID.get(issueId)?.name ?? issueId;
+}
+
+function actionName(action: CaseActionType | 'choose'): string {
+  if (action === 'co_counsel') return 'Co-Counsel';
+  if (action === 'second_chair') return 'Second Chair';
+  if (action === 'citation') return 'Citation';
+  if (action === 'choose') return 'Choose action';
+  return 'Lead';
+}
+
+function cardIssueSummary(card: CaseCardData | null | undefined): string {
+  if (!card) return '';
+  if (card.form === 'citation') return 'Uses another card in your brief';
+  return card.issues.map(issueName).join(' / ');
 }
 
 function seatName(profiles: SeatProfiles, seat: SeatId): string {
@@ -803,7 +819,7 @@ function ArgumentControls({ actor, game, legalActions, onSubmit }: {
   );
   return (
     <div className="decision-area">
-      <div className="decision-copy"><p className="section-label">Argument {game.actionsResolvedThisRound + 1} of 12</p><h3>Play one Case card</h3><p>Pick an assigned card, then choose its eligible Issue or Lead/Co-Counsel action.</p></div>
+      <div className="decision-copy"><p className="section-label">Argument {game.actionsResolvedThisRound + 1} of 12</p><h3>Play one Case card</h3><p>Pick an assigned card, then choose one of its complete legal resolutions below.</p></div>
       <div className="argument-grid">
         {assignedSlots.map((slot) => {
           const docket = game.docket.find((entry) => entry.slot === slot);
@@ -818,15 +834,21 @@ function ArgumentControls({ actor, game, legalActions, onSubmit }: {
                   {actions.map((action) => {
                     const actionType = action.focusAction ?? card.action;
                     const withPower = action.useSpecialty === true;
+                    const citedCard = action.citedSlot === undefined
+                      ? null
+                      : CARD_BY_ID.get(game.docket.find((entry) => entry.slot === action.citedSlot)?.cardId ?? '');
                     return (
                       <button
                         className={`action-button action-${actionType} ${withPower ? 'action-specialty' : ''}`}
                         type="button"
-                        key={`${action.slot}-${action.chosenIssue}-${action.focusAction ?? card.action}-${withPower ? 'power' : 'plain'}`}
+                        key={`${action.slot}-${action.chosenIssue}-${action.focusAction ?? card.action}-${action.citedSlot ?? 'none'}-${withPower ? 'power' : 'plain'}`}
                         onClick={() => onSubmit(action)}
                       >
                         <span>{issueName(action.chosenIssue)}</span>
-                        <strong>{actionType === 'lead' ? 'Lead' : 'Co-Counsel'}</strong>
+                        <strong>{actionName(actionType)}</strong>
+                        {action.citedSlot !== undefined && (
+                          <small className="action-reference">Cite {action.citedSlot} · {citedCard?.title}</small>
+                        )}
                         {withPower && <em className="action-specialty-tag">Specialty</em>}
                       </button>
                     );
@@ -847,9 +869,9 @@ function DocketChoiceCard({ docket, selected, onClick }: { docket: DocketCardSta
     <button className={`docket-choice ${selected ? 'docket-choice-selected' : ''}`} type="button" onClick={onClick} aria-pressed={selected}>
       <span className="slot-number">{docket.slot}</span>
       <strong>{card?.title}</strong>
-      <small>{card?.issues.map(issueName).join(' / ')}</small>
+      <small>{cardIssueSummary(card)}</small>
       <p className="docket-choice-rules">{card?.rulesText}</p>
-      <span className={`card-action card-action-${card?.action}`}>{card?.action === 'choose' ? 'Choose action' : card?.action.replace('_', '-')}</span>
+      <span className={`card-action card-action-${card?.action}`}>{card ? actionName(card.action) : ''}</span>
       <span className="selection-mark">{selected ? 'Selected' : 'Select'}</span>
     </button>
   );
@@ -952,7 +974,7 @@ function DocketBoard({ game, profiles }: { game: DisplayGame; profiles: SeatProf
           const card = CARD_BY_ID.get(docket.cardId);
           return (
             <article className="public-case-card" key={docket.slot}>
-              <div className="case-card-heading"><span className="slot-number">{docket.slot}</span><div><strong>{card?.title}</strong><small>{card?.issues.map(issueName).join(' / ')}</small></div></div>
+              <div className="case-card-heading"><span className="slot-number">{docket.slot}</span><div><strong>{card?.title}</strong><small>{cardIssueSummary(card)}</small></div></div>
               <p>{card?.rulesText}</p>
               <div className="usage-row">
                 {SIDE_IDS.map((side) => {
@@ -1814,6 +1836,12 @@ function GamePrimer() {
         <article className="primer-action primer-action-focus">
           <span>Focus</span><strong>Choose either action</strong><p>Flexible cards stay tied to their one printed Issue.</p>
         </article>
+        <article className="primer-action primer-action-citation">
+          <span>Citation</span><strong>2 yours · 1 Joint Work</strong><p>Borrow an Issue from either other card in your brief.</p>
+        </article>
+        <article className="primer-action primer-action-second-chair">
+          <span>Second Chair</span><strong>1 yours · 2 partner · 1 Joint Work</strong><p>Strengthens the partnership while giving your ally more control.</p>
+        </article>
       </div>
     </section>
   );
@@ -1867,6 +1895,8 @@ function RulesGuide() {
               <div><dt>Lead</dt><dd>Choose one printed Issue and add 3 of your firm’s markers.</dd></div>
               <div><dt>Co-Counsel</dt><dd>Choose one printed Issue; add 2 of yours, 1 partner marker, and 1 Joint Work.</dd></div>
               <div><dt>Focus</dt><dd>Use its single printed Issue, then choose Lead or Co-Counsel.</dd></div>
+              <div><dt>Citation</dt><dd>Choose either other card in your three-card brief and one Issue printed on it; add 2 of yours and 1 Joint Work. The cited card can be used before or after Citation.</dd></div>
+              <div><dt>Second Chair</dt><dd>Choose one printed Issue; add 1 of yours, 2 partner markers, and 1 Joint Work.</dd></div>
             </dl>
           </section>
 
