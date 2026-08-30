@@ -39,6 +39,7 @@ export function hashPublicGameState(state: GameState): string {
     for (const player of Object.values(clone.players)) {
       player.closingArgumentIssue = 'witnesses';
       player.specialtyId = null;
+      player.specialtyOptions = [];
     }
     clone.closingUndealt = [];
   }

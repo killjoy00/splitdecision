@@ -23,6 +23,7 @@ import {
   type SeatId,
   type SideId,
   type Slot,
+  SPECIALTY_BY_ID,
 } from '../engine/index.js';
 import type { PlayerView } from '../engine/visibility.js';
 import type {
@@ -107,6 +108,10 @@ function seatName(profiles: SeatProfiles, seat: SeatId): string {
 
 function phaseName(game: DisplayGame): string {
   switch (game.phase) {
+    case 'setup_specialty_choice':
+      return 'Choose a Specialty';
+    case 'closing_power_window':
+      return 'Specialty Window';
     case 'round_split_commit':
       return 'Divide the Docket';
     case 'round_choose_commit':
@@ -122,6 +127,10 @@ function phaseName(game: DisplayGame): string {
 
 function actorInstruction(game: DisplayGame): string {
   switch (game.phase) {
+    case 'setup_specialty_choice':
+      return 'You will secretly choose one of two Specialties for your firm.';
+    case 'closing_power_window':
+      return 'You may reposition Firm markers now that Closing Arguments are revealed.';
     case 'round_split_commit':
       return 'You will secretly divide the six Case cards into two briefs of three.';
     case 'round_choose_commit':
@@ -489,7 +498,15 @@ function TurnPanel({ actor, game, profiles, playerView, legalActions, selectedSl
         <small>This Issue scores again after Round 6.</small>
       </div>
 
+      <SpecialtyReminder player={game.players[actor]} />
+
       {error && <p className="error-banner" role="alert">{error}</p>}
+      {game.phase === 'setup_specialty_choice' && (
+        <SpecialtyDraftControls actor={actor} legalActions={legalActions} onSubmit={onSubmit} />
+      )}
+      {game.phase === 'closing_power_window' && (
+        <ClosingPowerControls actor={actor} game={game} legalActions={legalActions} onSubmit={onSubmit} />
+      )}
       {game.phase === 'round_split_commit' && (
         <SplitControls actor={actor} game={game} selectedSlots={selectedSlots} onSelectedSlotsChange={onSelectedSlotsChange} onSubmit={onSubmit} />
       )}
@@ -562,6 +579,104 @@ function BriefChoiceControls({ actor, game, onSubmit }: {
   );
 }
 
+function SpecialtyReminder({ player }: { player: DisplayGame['players'][SeatId] }) {
+  if (!player.specialtyId) return null;
+  const specialty = SPECIALTY_BY_ID.get(player.specialtyId);
+  if (!specialty) return null;
+  return (
+    <div className="secret-reminder specialty-reminder">
+      <span>Your Specialty</span>
+      <strong>{specialty.name}</strong>
+      <small>
+        {player.specialtyUsed
+          ? `Power spent · Bonus +${specialty.bonusPoints}: ${specialty.bonus}`
+          : specialty.power}
+      </small>
+    </div>
+  );
+}
+
+function SpecialtyDraftControls({ actor, legalActions, onSubmit }: {
+  actor: SeatId;
+  legalActions: GameAction[];
+  onSubmit: (action: GameAction) => void;
+}) {
+  const choices = legalActions.filter(
+    (action): action is Extract<GameAction, { type: 'choose_specialty' }> =>
+      action.type === 'choose_specialty',
+  );
+  return (
+    <div className="decision-area">
+      <div className="decision-copy">
+        <p className="section-label">Setup · {actor}</p>
+        <h3>Choose your Specialty</h3>
+        <p>Your Specialty stays secret until you spend its power or the case ends.</p>
+      </div>
+      <div className="specialty-grid">
+        {choices.map((action) => {
+          const specialty = SPECIALTY_BY_ID.get(action.specialtyId);
+          if (!specialty) return null;
+          return (
+            <button
+              className="specialty-card"
+              type="button"
+              key={action.specialtyId}
+              onClick={() => onSubmit(action)}
+            >
+              <strong>{specialty.name}</strong>
+              <span className="specialty-power">{specialty.power}</span>
+              <span className="specialty-bonus">+{specialty.bonusPoints} · {specialty.bonus}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ClosingPowerControls({ actor, game, legalActions, onSubmit }: {
+  actor: SeatId;
+  game: DisplayGame;
+  legalActions: GameAction[];
+  onSubmit: (action: GameAction) => void;
+}) {
+  const moves = legalActions.filter(
+    (action): action is Extract<GameAction, { type: 'use_specialty' }> =>
+      action.type === 'use_specialty',
+  );
+  const pass = legalActions.find((action) => action.type === 'pass_specialty');
+  return (
+    <div className="decision-area">
+      <div className="decision-copy">
+        <p className="section-label">Closing Arguments revealed</p>
+        <h3>Move up to two Firm markers</h3>
+        <p>
+          Revealed Issues: {game.closingRevealed.map(issueName).join(' · ')}. Markers may only
+          leave Issues that were not revealed.
+        </p>
+      </div>
+      <div className="action-options closing-power-options">
+        {moves.map((action) => (
+          <button
+            className="action-button"
+            type="button"
+            key={`${action.toIssue}-${(action.fromIssues ?? []).join(',')}`}
+            onClick={() => onSubmit(action)}
+          >
+            <span>{(action.fromIssues ?? []).map(issueName).join(' + ')}</span>
+            <strong>→ {action.toIssue ? issueName(action.toIssue) : ''}</strong>
+          </button>
+        ))}
+      </div>
+      {pass && (
+        <button className="button button-quiet" type="button" onClick={() => onSubmit(pass)}>
+          Keep my markers where they are
+        </button>
+      )}
+    </div>
+  );
+}
+
 function ArgumentControls({ actor, game, legalActions, onSubmit }: {
   actor: SeatId;
   game: DisplayGame;
@@ -573,9 +688,25 @@ function ArgumentControls({ actor, game, legalActions, onSubmit }: {
   const cardActions = legalActions.filter(
     (action): action is Extract<GameAction, { type: 'play_docket_card' }> => action.type === 'play_docket_card',
   );
+  const standalonePower = legalActions.find(
+    (action): action is Extract<GameAction, { type: 'use_specialty' }> =>
+      action.type === 'use_specialty',
+  );
+  const specialty = game.players[actor].specialtyId
+    ? SPECIALTY_BY_ID.get(game.players[actor].specialtyId as string)
+    : undefined;
   return (
     <div className="decision-area">
       <div className="decision-copy"><p className="section-label">Argument {game.actionsResolvedThisRound + 1} of 12</p><h3>Play one Case card</h3><p>Pick an assigned card, then choose its eligible Issue or Lead/Co-Counsel action.</p></div>
+      {standalonePower && specialty && (
+        <button
+          className="button button-specialty"
+          type="button"
+          onClick={() => onSubmit(standalonePower)}
+        >
+          Spend {specialty.name}: {specialty.power}
+        </button>
+      )}
       <div className="argument-grid">
         {assignedSlots.map((slot) => {
           const docket = game.docket.find((entry) => entry.slot === slot);
@@ -589,9 +720,17 @@ function ArgumentControls({ actor, game, legalActions, onSubmit }: {
                 <div className="action-options">
                   {actions.map((action) => {
                     const actionType = action.focusAction ?? card.action;
+                    const withPower = action.useSpecialty === true;
                     return (
-                      <button className={`action-button action-${actionType}`} type="button" key={`${action.slot}-${action.chosenIssue}-${action.focusAction ?? card.action}`} onClick={() => onSubmit(action)}>
-                        <span>{issueName(action.chosenIssue)}</span><strong>{actionType === 'lead' ? 'Lead' : 'Co-Counsel'}</strong>
+                      <button
+                        className={`action-button action-${actionType} ${withPower ? 'action-specialty' : ''}`}
+                        type="button"
+                        key={`${action.slot}-${action.chosenIssue}-${action.focusAction ?? card.action}-${withPower ? 'power' : 'plain'}`}
+                        onClick={() => onSubmit(action)}
+                      >
+                        <span>{issueName(action.chosenIssue)}</span>
+                        <strong>{actionType === 'lead' ? 'Lead' : 'Co-Counsel'}</strong>
+                        {withPower && <em className="action-specialty-tag">Specialty</em>}
                       </button>
                     );
                   })}
@@ -754,6 +893,22 @@ function VerdictPanel({ game, profiles, onNewCase }: { game: DisplayGame; profil
         {SEAT_ORDER.map((seat) => <div className={seat === verdict.winningFirm ? 'verdict-winner' : ''} key={seat}><span>{seat} · {seatName(profiles, seat)}</span><strong>{game.players[seat].reputation}</strong></div>)}
       </div>
       <div className="closing-list"><span>Closing Arguments</span>{game.closingRevealed.map((issue) => <strong key={issue}>{issueName(issue)}</strong>)}</div>
+      {game.specialtyBonuses.length > 0 && (
+        <div className="verdict-specialties">
+          <p className="section-label">Specialties</p>
+          <ul>
+            {game.specialtyBonuses.map((bonus) => {
+              const specialty = SPECIALTY_BY_ID.get(bonus.specialtyId);
+              return (
+                <li className={bonus.earned ? 'specialty-earned' : 'specialty-missed'} key={bonus.seatId}>
+                  <span>{bonus.seatId} · {specialty?.name ?? bonus.specialtyId}</span>
+                  <strong>{bonus.earned ? `+${bonus.bonusPoints}` : 'no bonus'}</strong>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
       <p className="verdict-detail">Side tiebreak: {verdict.sideTieBreaker.replaceAll('_', ' ')} · Firm tiebreak: {verdict.firmTieBreaker.replaceAll('_', ' ')}</p>
       <button className="button button-primary button-large" type="button" onClick={onNewCase}>Open another case</button>
     </section>

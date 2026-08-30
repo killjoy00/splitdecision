@@ -18,6 +18,15 @@ export { createRandom, randomItem, shuffled } from './random.js';
 export { applyAction, replayGame } from './reducer.js';
 export { scoreIssue } from './scoring.js';
 export {
+  applySpecialtyBonuses,
+  getSeatSpecialty,
+  getSpecialty,
+  hasUnusedPower,
+  SPECIALTY_BY_ID,
+  SPECIALTY_OPTIONS_PER_SEAT,
+  unrevealedIssues,
+} from './specialties.js';
+export {
   getSideFloor,
   getSideTotal,
   nextSeat,

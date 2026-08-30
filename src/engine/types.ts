@@ -20,6 +20,11 @@ export type CaseActionType = 'lead' | 'co_counsel';
 export type CaseCardAction = CaseActionType | 'choose';
 export type CaseCardForm = 'dual_issue' | 'focus';
 export type LeadCreditSource = 'hearing' | 'closing';
+export type SpecialtyPowerTiming =
+  | 'before_issue_scores'
+  | 'when_resolving_case_card'
+  | 'when_resolving_co_counsel'
+  | 'after_closing_reveal';
 
 export interface IssueData {
   id: IssueId;
@@ -40,7 +45,7 @@ export interface CaseCardData {
 export interface SpecialtyData {
   id: string;
   name: string;
-  powerTiming: string;
+  powerTiming: SpecialtyPowerTiming;
   powerIssue?: IssueId;
   powerIssues?: IssueId[];
   power: string;
@@ -85,7 +90,7 @@ export const DEFAULT_RULES: RulesConfig = {
   coCounselOwnMarkers: 2,
   coCounselPartnerMarkers: 1,
   coCounselJointWork: 1,
-  specialtiesEnabled: false,
+  specialtiesEnabled: true,
   allowPlacementAfterSecondHearing: true,
 };
 
@@ -103,9 +108,11 @@ export interface PlayerState {
   reputation: number;
   leadCredits: LeadCredit[];
   closingArgumentIssue: IssueId;
+  specialtyOptions: string[];
   specialtyId: string | null;
   specialtyUsed: boolean;
   specialtyRevealed: boolean;
+  specialtyBonusAwarded: number;
 }
 
 export interface IssueState {
@@ -133,9 +140,11 @@ export interface BriefState {
 }
 
 export type GamePhase =
+  | 'setup_specialty_choice'
   | 'round_split_commit'
   | 'round_choose_commit'
   | 'round_argue'
+  | 'closing_power_window'
   | 'closing_scoring'
   | 'complete';
 
@@ -159,6 +168,13 @@ export interface VerdictResult {
   sideTotal: Record<SideId, number>;
   sideTieBreaker: 'floor' | 'combined_reputation' | 'courts_favor';
   firmTieBreaker: 'reputation' | 'lead_credits' | 'closing_credits' | 'first_chair';
+}
+
+export interface SpecialtyBonusResult {
+  seatId: SeatId;
+  specialtyId: string;
+  bonusPoints: number;
+  earned: boolean;
 }
 
 export interface GameEvent {
@@ -195,6 +211,7 @@ export interface GameState {
   closingRevealed: IssueId[];
   hearingResults: HearingResult[];
   provisionalVerdict: VerdictResult | null;
+  specialtyBonuses: SpecialtyBonusResult[];
   verdict: VerdictResult | null;
   actionHistory: GameAction[];
   eventLog: GameEvent[];
@@ -208,6 +225,14 @@ export interface CreateGameOptions {
 }
 
 export type GameAction =
+  | { type: 'choose_specialty'; actor: SeatId; specialtyId: string }
+  | {
+      type: 'use_specialty';
+      actor: SeatId;
+      toIssue?: IssueId;
+      fromIssues?: IssueId[];
+    }
+  | { type: 'pass_specialty'; actor: SeatId }
   | { type: 'commit_split'; actor: SeatId; groups: Split }
   | { type: 'choose_brief'; actor: SeatId; briefIndex: 0 | 1 }
   | {
@@ -216,6 +241,7 @@ export type GameAction =
       slot: Slot;
       chosenIssue: IssueId;
       focusAction?: CaseActionType;
+      useSpecialty?: boolean;
     };
 
 export interface RuleError {

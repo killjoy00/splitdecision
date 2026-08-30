@@ -39,7 +39,39 @@ These figures validate execution and rough symmetry only. The strategic-bot repo
 
 ## Deferred intentionally
 
-- Specialty selection, one-time powers, timing windows, and endgame Specialty bonuses
 - Full simulation telemetry dashboard
 
-The engine rejects `specialtiesEnabled: true` rather than silently applying incomplete rules.
+The Specialty module is complete and enabled by default. `specialtiesEnabled: false`
+still plays the base-rules game, and the engine keeps every Specialty field empty in
+that mode.
+
+## Specialty module
+
+- setup deals each firm two of the twelve Specialties and locks one secretly
+- all four power timings resolve: before an Issue scores, when resolving a Case
+  card, when resolving Co-Counsel, and after the Closing Argument reveal
+- powers are one-time and reveal the card when spent; declining the Closer window
+  forfeits the power without revealing it
+- endgame bonuses are paid after Closing Arguments score and before the verdict,
+  so they count toward the team floor
+- Team Builder reads Reputation from before any bonus is paid, so bonuses cannot
+  cascade within the same pass
+- player views redact both the chosen Specialty and the two dealt options, and the
+  draft hides which opponents have already committed
+
+### Measured bonus reach
+
+Share of games in which each Specialty's endgame condition was met, by bot level:
+
+| Bot level | Overall bonus rate |
+|---|---|
+| Easy | 24.6% |
+| Medium | 31.1% |
+| Hard | 38.0% |
+
+The rate rising with bot strength is the intended signal: bonuses reward directed
+play rather than luck. The spread between cards is wide, though — Generalist,
+Team Builder, and Closer land 60-72% at Medium, while the six single-Issue
+specialists land 10-27%. The +3 versus +2 payout only partly offsets that. The
+conditions are implemented exactly as written in the canonical data, so closing
+that gap is a rules-tuning decision rather than an engine change.

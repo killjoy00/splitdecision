@@ -3,6 +3,7 @@ import { getLegalActions, getPendingActors } from './legalActions.js';
 import { createRandom, randomItem, shuffled, type RandomSource } from './random.js';
 import { applyAction } from './reducer.js';
 import { PARTNER_BY_SEAT, SIDE_BY_SEAT } from './selectors.js';
+import { SPECIALTY_BY_ID } from './specialties.js';
 import {
   ISSUE_IDS,
   SEAT_ORDER,
@@ -76,7 +77,12 @@ function actionKey(action: GameAction): string {
     return `split:${action.groups.map((group) => group.join('')).join('|')}`;
   }
   if (action.type === 'choose_brief') return `brief:${action.briefIndex}`;
-  return `play:${action.slot}:${action.chosenIssue}:${action.focusAction ?? 'fixed'}`;
+  if (action.type === 'choose_specialty') return `specialty:${action.specialtyId}`;
+  if (action.type === 'pass_specialty') return 'specialty:pass';
+  if (action.type === 'use_specialty') {
+    return `specialty:use:${action.toIssue ?? 'self'}:${(action.fromIssues ?? []).join(',')}`;
+  }
+  return `play:${action.slot}:${action.chosenIssue}:${action.focusAction ?? 'fixed'}:${action.useSpecialty ? 'power' : 'plain'}`;
 }
 
 function preClosingReputation(state: GameState): Record<SeatId, number> {
@@ -279,6 +285,69 @@ function splitOpportunityValue(
   return actorValues[retainedIndex] * 1.35 + partnerValues[partnerChoice] * 0.7 + balance;
 }
 
+/**
+ * Values a Specialty at setup, where the board is still empty and an
+ * apply-and-measure delta would score every option identically. Cards are
+ * ranked by how reachable their endgame bonus is: Issues that score early are
+ * easier to build Lead Credits in, and the holder's own Closing Argument Issue
+ * is a guaranteed extra scoring opportunity.
+ */
+function specialtyDraftValue(state: GameState, actor: SeatId, specialtyId: string): number {
+  const specialty = SPECIALTY_BY_ID.get(specialtyId);
+  if (!specialty) return -Infinity;
+  const ownClosing = state.players[actor].closingArgumentIssue;
+
+  const issueReach = (issueId: IssueId): number => {
+    const distance = roundsUntilHearing(state, issueId);
+    const timing = distance === null ? 0 : clamp(6 - distance, 1, 6);
+    return timing + (issueId === ownClosing ? 4 : 0);
+  };
+
+  if (specialty.powerTiming === 'before_issue_scores') {
+    const issueId = specialty.powerIssue;
+    if (!issueId) return 0;
+    // One guaranteed marker plus a two-credit bonus concentrated in one Issue.
+    return issueReach(issueId) * 1.6 + specialty.bonusPoints;
+  }
+
+  if (specialty.id === 'generalist') {
+    // Full board flexibility; its three-Issue bonus is the easiest to reach.
+    return 12 + specialty.bonusPoints;
+  }
+
+  if (specialty.id === 'team_builder') {
+    return 8 + specialty.bonusPoints;
+  }
+
+  if (specialty.id === 'closer') {
+    // Repositioning after the reveal is strong, but two Closing Lead Credits
+    // out of a maximum of four is a demanding bonus.
+    return 9 + specialty.bonusPoints * 0.6;
+  }
+
+  const issues = specialty.powerIssues ?? [];
+  const reach = issues.reduce((total, issueId) => total + issueReach(issueId), 0);
+  return reach * 0.9 + specialty.bonusPoints;
+}
+
+/**
+ * Discourages spending a `before_issue_scores` power early. The marker only
+ * matters in the Hearing that is about to resolve, or in a Closing Argument
+ * Issue the holder already knows will be revealed.
+ */
+function powerTimingAdjustment(state: GameState, actor: SeatId, action: GameAction): number {
+  if (action.type !== 'use_specialty' || state.phase !== 'round_argue') return 0;
+  const specialtyId = state.players[actor].specialtyId;
+  const specialty = specialtyId === null ? undefined : SPECIALTY_BY_ID.get(specialtyId);
+  const issueId = specialty?.powerIssue;
+  if (!issueId) return 0;
+
+  const distance = roundsUntilHearing(state, issueId);
+  if (distance === 0) return 0;
+  if (issueId === state.players[actor].closingArgumentIssue) return -4;
+  return -28;
+}
+
 function scoreMediumActionWithClosing(
   state: GameState,
   actor: SeatId,
@@ -299,11 +368,15 @@ function scoreMediumActionWithClosing(
     if (!split) return -Infinity;
     return groupOpportunityValue(state, actor, split[action.briefIndex], knownClosingIssue);
   }
+  if (action.type === 'choose_specialty') {
+    return specialtyDraftValue(state, actor, action.specialtyId);
+  }
 
   const result = applyAction(state, action);
   if (!result.ok) return -Infinity;
   return positionUtility(result.state, actor, knownClosingIssue)
-    - positionUtility(state, actor, knownClosingIssue);
+    - positionUtility(state, actor, knownClosingIssue)
+    + powerTimingAdjustment(state, actor, action);
 }
 
 export function scoreMediumAction(
@@ -385,6 +458,7 @@ function scoreHardAction(
 ): number {
   const ownClosing = state.players[actor].closingArgumentIssue;
   const mediumScore = scoreMediumActionWithClosing(state, actor, action, ownClosing);
+  if (action.type === 'choose_specialty') return mediumScore;
   if (action.type === 'commit_split') {
     let sampledScore = 0;
     for (let sample = 0; sample < HARD_SAMPLES; sample += 1) {

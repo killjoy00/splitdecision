@@ -19,8 +19,23 @@ function applyOrThrow(state, action) {
   return result.state;
 }
 
+/** Locks a Specialty for every seat so a test can reach the round phases. */
+function completeSpecialtyDraft(state) {
+  let next = state;
+  while (next.phase === 'setup_specialty_choice') {
+    const seat = ['P1', 'D1', 'P2', 'D2'].find(
+      (candidate) => next.players[candidate].specialtyId === null,
+    );
+    assert.ok(seat);
+    const action = getLegalActions(next, seat)[0];
+    assert.ok(action);
+    next = applyOrThrow(next, action);
+  }
+  return next;
+}
+
 function advanceToArgue(seed = 'flow') {
-  let state = createGame({ seed });
+  let state = completeSpecialtyDraft(createGame({ seed }));
   for (const side of SIDE_IDS) {
     const divider = state.briefs[side].divider;
     const action = getLegalActions(state, divider)[0];
@@ -86,7 +101,7 @@ test('resolving a Docket card applies the printed action and records the side-sp
 });
 
 test('private Closing Argument and committed split information is redacted', () => {
-  let state = createGame({ seed: 'visibility' });
+  let state = completeSpecialtyDraft(createGame({ seed: 'visibility' }));
   const divider = state.briefs.plaintiff.divider;
   const chooser = state.briefs.plaintiff.chooser;
   const splitAction = getLegalActions(state, divider)[0];
@@ -116,7 +131,7 @@ test('private Closing Argument and committed split information is redacted', () 
 
 
 test('public hashes do not reveal the assignment of secret Closing Arguments', () => {
-  const first = createGame({ seed: 'public-hash' });
+  const first = completeSpecialtyDraft(createGame({ seed: 'public-hash' }));
   const second = structuredClone(first);
   const temporary = second.players.P1.closingArgumentIssue;
   second.players.P1.closingArgumentIssue = second.players.D1.closingArgumentIssue;
@@ -134,7 +149,7 @@ test('public hashes do not reveal the assignment of secret Closing Arguments', (
 });
 
 test('malformed actions are rejected without mutating canonical state', () => {
-  const state = createGame({ seed: 'invalid-actions' });
+  const state = completeSpecialtyDraft(createGame({ seed: 'invalid-actions' }));
   const before = hashGameState(state);
   const invalidActions = [
     null,

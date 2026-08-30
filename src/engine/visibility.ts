@@ -40,6 +40,8 @@ export function getPlayerView(state: GameState, viewer: SeatId): PlayerView {
   for (const [seat, player] of Object.entries(view.players) as Array<[SeatId, VisiblePlayerState]>) {
     if (seat !== viewer && !closingIsPublic) player.closingArgumentIssue = null;
     if (seat !== viewer && !player.specialtyRevealed) player.specialtyId = null;
+    // Offered Specialties would leak the chosen card by elimination.
+    if (seat !== viewer) player.specialtyOptions = [];
   }
 
   if (state.phase === 'round_split_commit') {
@@ -51,6 +53,13 @@ export function getPlayerView(state: GameState, viewer: SeatId): PlayerView {
   if (state.phase === 'round_choose_commit') {
     for (const side of ['plaintiff', 'defense'] as const) {
       if (state.briefs[side].chooser !== viewer) view.briefs[side].chosenBriefIndex = null;
+    }
+  }
+
+  if (state.phase === 'setup_specialty_choice') {
+    // Hide who has already locked a Specialty so the choice stays simultaneous.
+    for (const seat of Object.keys(view.players) as SeatId[]) {
+      if (seat !== viewer) view.players[seat].specialtyId = null;
     }
   }
 

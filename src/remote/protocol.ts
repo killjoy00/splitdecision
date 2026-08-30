@@ -29,7 +29,10 @@ export interface RemotePlayerSnapshot {
   seat: SeatId;
   game: PlayerView | null;
   legalActions: GameAction[];
+  /** First pending seat. Retained for display; prefer `pendingActors`. */
   pendingActor: SeatId | null;
+  /** Every seat that may act now. Simultaneous phases list more than one. */
+  pendingActors: SeatId[];
 }
 
 export type RemoteApiSuccess<T> = { ok: true; value: T };

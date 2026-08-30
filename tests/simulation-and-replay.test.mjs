@@ -44,7 +44,8 @@ test('a random legal game reaches a verdict and consumes every Case card once', 
   const game = playGame('complete-game');
   assert.equal(game.state.phase, 'complete');
   assert.ok(game.state.verdict);
-  assert.equal(game.actions.length, 96);
+  // 96 Case card resolutions plus one Specialty choice per firm.
+  assert.equal(game.actions.length, 100);
   assert.equal(game.state.caseDeckIndex, 36);
 
   const docketEvents = game.state.eventLog.filter(
@@ -86,7 +87,7 @@ test('Medium and Hard bots complete deterministic legal games', () => {
   const first = runBotGame('skilled-bot-game', controllers);
   const second = runBotGame('skilled-bot-game', controllers);
   assert.deepEqual(first, second);
-  assert.equal(first.actions, 96);
+  assert.equal(first.actions, 100);
 });
 
 test('Medium and Hard choices do not depend on opponents\' Closing Arguments', () => {

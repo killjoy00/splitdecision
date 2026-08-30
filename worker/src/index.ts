@@ -226,8 +226,12 @@ export class GameRoom extends DurableObject<Env> {
     if (!room.game) return null;
     let steps = 0;
     while (room.game.phase !== 'complete') {
-      const actor = getPendingActors(room.game)[0] ?? null;
-      if (!actor || room.game.players[actor].controller === 'human') break;
+      // Simultaneous phases list several pending seats; resolve any bot among
+      // them rather than stalling behind a human who has not committed yet.
+      const game = room.game;
+      const actor = getPendingActors(game)
+        .find((seat) => game.players[seat].controller !== 'human') ?? null;
+      if (!actor) break;
       const level = room.game.players[actor].controller as AutomatedBotLevel;
       const random = createRandom(
         `${room.game.seed}:remote-bot:${room.game.actionHistory.length}`,
@@ -244,11 +248,18 @@ export class GameRoom extends DurableObject<Env> {
 
   private snapshot(room: StoredRoom, seat: SeatId): RemotePlayerSnapshot {
     const game = room.game ? getPlayerView(room.game, seat) : null;
-    const pendingActor = room.game ? getPendingActors(room.game)[0] ?? null : null;
-    const legalActions = room.game && pendingActor === seat
+    const pendingActors = room.game ? getPendingActors(room.game) : [];
+    const legalActions = room.game && pendingActors.includes(seat)
       ? getLegalActions(room.game, seat)
       : [];
-    return { lobby: lobbyFor(room), seat, game, legalActions, pendingActor };
+    return {
+      lobby: lobbyFor(room),
+      seat,
+      game,
+      legalActions,
+      pendingActor: pendingActors[0] ?? null,
+      pendingActors,
+    };
   }
 
   async initialize(code: string, nameValue: unknown): Promise<RemoteApiResult<{
@@ -392,8 +403,9 @@ export class GameRoom extends DurableObject<Env> {
     if (!room.game) return failure(409, 'not_started', 'The host has not started the game.');
     const seat = this.seatForToken(room, tokenHash);
     if (!seat) return failure(401, 'invalid_session', 'This player session is not valid.');
-    const pendingActor = getPendingActors(room.game)[0] ?? null;
-    if (pendingActor !== seat) return failure(409, 'not_your_turn', 'It is not your turn.');
+    if (!getPendingActors(room.game).includes(seat)) {
+      return failure(409, 'not_your_turn', 'It is not your turn.');
+    }
     if (actionValue === null || typeof actionValue !== 'object' || Array.isArray(actionValue)) {
       return failure(400, 'invalid_action', 'Action must be an object.');
     }

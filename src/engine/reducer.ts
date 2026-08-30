@@ -3,6 +3,18 @@ import { createBriefState, revealNextDocket } from './createGame.js';
 import { appendEvent } from './events.js';
 import { assertGameInvariants } from './invariants.js';
 import { scoreIssue } from './scoring.js';
+import {
+  applyBeforeIssueScoresPower,
+  applyCloserPower,
+  applySpecialtyBonuses,
+  canBoostCaseCard,
+  canBoostCoCounsel,
+  canRetargetAnyIssue,
+  getSeatSpecialty,
+  hasUnusedPower,
+  markCardPowerSpent,
+  unrevealedIssues,
+} from './specialties.js';
 import { canonicalizeSplit, isValidThreeThreeSplit } from './splits.js';
 import {
   nextSeat,
@@ -46,6 +58,39 @@ function parseAction(value: unknown): { action: GameAction } | { error: string }
   }
   const actor = candidate.actor as SeatId;
 
+  if (candidate.type === 'choose_specialty') {
+    if (typeof candidate.specialtyId !== 'string' || !candidate.specialtyId) {
+      return { error: 'choose_specialty requires a Specialty id' };
+    }
+    return { action: { type: 'choose_specialty', actor, specialtyId: candidate.specialtyId } };
+  }
+
+  if (candidate.type === 'pass_specialty') {
+    return { action: { type: 'pass_specialty', actor } };
+  }
+
+  if (candidate.type === 'use_specialty') {
+    if (candidate.toIssue !== undefined && !ISSUE_IDS.includes(candidate.toIssue as IssueId)) {
+      return { error: 'use_specialty toIssue must be a valid Issue' };
+    }
+    if (candidate.fromIssues !== undefined) {
+      if (!Array.isArray(candidate.fromIssues)
+          || !candidate.fromIssues.every((entry) => ISSUE_IDS.includes(entry as IssueId))) {
+        return { error: 'use_specialty fromIssues must be valid Issues' };
+      }
+    }
+    return {
+      action: {
+        type: 'use_specialty',
+        actor,
+        ...(candidate.toIssue === undefined ? {} : { toIssue: candidate.toIssue as IssueId }),
+        ...(candidate.fromIssues === undefined
+          ? {}
+          : { fromIssues: candidate.fromIssues as IssueId[] }),
+      },
+    };
+  }
+
   if (candidate.type === 'commit_split') {
     if (!isValidThreeThreeSplit(candidate.groups)) {
       return { error: 'commit_split requires two disjoint groups of three covering slots 1-6' };
@@ -72,6 +117,9 @@ function parseAction(value: unknown): { action: GameAction } | { error: string }
         && candidate.focusAction !== 'co_counsel') {
       return { error: 'focusAction must be Lead or Co-Counsel when supplied' };
     }
+    if (candidate.useSpecialty !== undefined && typeof candidate.useSpecialty !== 'boolean') {
+      return { error: 'useSpecialty must be a boolean when supplied' };
+    }
     const focusAction = candidate.focusAction as CaseActionType | undefined;
     return {
       action: {
@@ -80,6 +128,7 @@ function parseAction(value: unknown): { action: GameAction } | { error: string }
         slot: candidate.slot as (typeof SLOTS)[number],
         chosenIssue: candidate.chosenIssue as IssueId,
         ...(focusAction === undefined ? {} : { focusAction }),
+        ...(candidate.useSpecialty ? { useSpecialty: true } : {}),
       },
     };
   }
@@ -109,6 +158,27 @@ function assignBriefs(state: GameState): void {
   }
 }
 
+/**
+ * Seats that may still resolve an `after_closing_reveal` power. The window
+ * stays open until every one of them acts or declines.
+ */
+export function getClosingPowerActors(state: GameState): SeatId[] {
+  if (state.phase !== 'closing_power_window') return [];
+  return SEAT_ORDER.filter((seat) => hasUnusedPower(state, seat)
+    && getSeatSpecialty(state, seat)?.powerTiming === 'after_closing_reveal');
+}
+
+function finishClosingScoring(state: GameState): void {
+  state.phase = 'closing_scoring';
+  for (const issueId of state.closingRevealed) scoreIssue(state, issueId, 'closing');
+
+  applySpecialtyBonuses(state);
+
+  state.verdict = resolveVerdict(state);
+  state.phase = 'complete';
+  appendEvent(state, 'verdict_resolved', state.verdict);
+}
+
 function resolveClosingAndVerdict(state: GameState): void {
   const provisional = resolveVerdict(state);
   state.provisionalVerdict = provisional;
@@ -117,16 +187,15 @@ function resolveClosingAndVerdict(state: GameState): void {
     provisional,
   });
 
-  state.phase = 'closing_scoring';
   const revealed = Object.values(state.players).map((player) => player.closingArgumentIssue);
   state.closingRevealed = ISSUE_IDS.filter((issueId) => revealed.includes(issueId));
   appendEvent(state, 'closing_arguments_revealed', { issues: state.closingRevealed });
 
-  for (const issueId of state.closingRevealed) scoreIssue(state, issueId, 'closing');
+  // Closer resolves between the reveal and Closing Argument scoring.
+  state.phase = 'closing_power_window';
+  if (getClosingPowerActors(state).length > 0) return;
 
-  state.verdict = resolveVerdict(state);
-  state.phase = 'complete';
-  appendEvent(state, 'verdict_resolved', state.verdict);
+  finishClosingScoring(state);
 }
 
 function finishRound(state: GameState): void {
@@ -156,9 +225,19 @@ function finishRound(state: GameState): void {
 function validateCardResolution(
   state: GameState,
   action: Extract<GameAction, { type: 'play_docket_card' }>,
-): { side: SideId; actionType: CaseActionType; chosenIssue: IssueId } | ApplyActionResult {
+): {
+  side: SideId;
+  actionType: CaseActionType;
+  chosenIssue: IssueId;
+  retargeting: boolean;
+} | ApplyActionResult {
   if (state.phase !== 'round_argue') return fail('wrong_phase', 'Case cards may only be played while arguing the case');
   if (state.activeSeat !== action.actor) return fail('not_active_player', `${action.actor} is not the active firm`);
+
+  const retargeting = action.useSpecialty === true && canRetargetAnyIssue(state, action.actor);
+  if (action.useSpecialty === true && !hasUnusedPower(state, action.actor)) {
+    return fail('specialty_unavailable', `${action.actor} has no unused Specialty power`);
+  }
 
   const side = SIDE_BY_SEAT[action.actor];
   const assigned = state.briefs[side].assignments[action.actor] ?? [];
@@ -176,11 +255,15 @@ function validateCardResolution(
     if (action.focusAction !== 'lead' && action.focusAction !== 'co_counsel') {
       return fail('focus_action_required', 'Focus cards require Lead or Co-Counsel selection');
     }
-    if (action.chosenIssue !== card.issues[0]) return fail('illegal_issue', 'Focus cards must use their printed Issue');
+    if (action.chosenIssue !== card.issues[0] && !retargeting) {
+      return fail('illegal_issue', 'Focus cards must use their printed Issue');
+    }
     actionType = action.focusAction;
   } else {
     if (action.focusAction !== undefined) return fail('unexpected_focus_action', 'Dual-Issue cards have a fixed action type');
-    if (!card.issues.includes(action.chosenIssue)) return fail('illegal_issue', `${action.chosenIssue} is not printed on ${card.title}`);
+    if (!card.issues.includes(action.chosenIssue) && !retargeting) {
+      return fail('illegal_issue', `${action.chosenIssue} is not printed on ${card.title}`);
+    }
     if (card.action !== 'lead' && card.action !== 'co_counsel') return fail('invalid_card_data', `${card.id} has an invalid action`);
     actionType = card.action;
   }
@@ -190,7 +273,7 @@ function validateCardResolution(
     return fail('issue_closed', `${action.chosenIssue} is closed after its second Hearing`);
   }
 
-  return { side, actionType, chosenIssue: action.chosenIssue };
+  return { side, actionType, chosenIssue: action.chosenIssue, retargeting };
 }
 
 export function applyAction(state: GameState, value: unknown): ApplyActionResult {
@@ -200,7 +283,73 @@ export function applyAction(state: GameState, value: unknown): ApplyActionResult
   const next = cloneState(state);
 
   try {
-    if (action.type === 'commit_split') {
+    if (action.type === 'choose_specialty') {
+      if (next.phase !== 'setup_specialty_choice') return fail('wrong_phase', 'Specialties are not being chosen now');
+      const player = next.players[action.actor];
+      if (player.specialtyId !== null) return fail('specialty_already_chosen', `${action.actor} already chose a Specialty`);
+      if (!player.specialtyOptions.includes(action.specialtyId)) {
+        return fail('specialty_not_offered', `${action.specialtyId} was not offered to ${action.actor}`);
+      }
+
+      player.specialtyId = action.specialtyId;
+      if (next.recordTelemetry) next.actionHistory.push(action);
+      appendEvent(next, 'specialty_chosen', { seat: action.actor }, action.actor);
+      if (SEAT_ORDER.every((seat) => next.players[seat].specialtyId !== null)) {
+        next.phase = 'round_split_commit';
+        appendEvent(next, 'specialties_locked', { seats: [...SEAT_ORDER] });
+      }
+    } else if (action.type === 'use_specialty') {
+      if (!hasUnusedPower(next, action.actor)) {
+        return fail('specialty_unavailable', `${action.actor} has no unused Specialty power`);
+      }
+      const specialty = getSeatSpecialty(next, action.actor);
+      if (!specialty) return fail('specialty_unavailable', `${action.actor} has no Specialty`);
+
+      if (specialty.powerTiming === 'before_issue_scores') {
+        if (next.phase !== 'round_argue') return fail('wrong_phase', 'This Specialty resolves while arguing the case');
+        if (next.activeSeat !== action.actor) return fail('not_active_player', `${action.actor} is not the active firm`);
+        applyBeforeIssueScoresPower(next, action.actor);
+        if (next.recordTelemetry) next.actionHistory.push(action);
+      } else if (specialty.powerTiming === 'after_closing_reveal') {
+        if (next.phase !== 'closing_power_window') return fail('wrong_phase', 'This Specialty resolves after Closing Arguments are revealed');
+        const toIssue = action.toIssue;
+        const fromIssues = action.fromIssues ?? [];
+        if (!toIssue || !next.closingRevealed.includes(toIssue)) {
+          return fail('invalid_specialty_target', 'Closer must move markers into a revealed Issue');
+        }
+        if (fromIssues.length < 1 || fromIssues.length > 2) {
+          return fail('invalid_specialty_target', 'Closer moves one or two Firm markers');
+        }
+        const available = unrevealedIssues(next);
+        const counts = new Map<IssueId, number>();
+        for (const issueId of fromIssues) {
+          if (!available.includes(issueId)) {
+            return fail('invalid_specialty_target', `${issueId} is not an unrevealed Issue`);
+          }
+          counts.set(issueId, (counts.get(issueId) ?? 0) + 1);
+        }
+        for (const [issueId, count] of counts) {
+          if (next.issues[issueId].firmMarkers[action.actor] < count) {
+            return fail('invalid_specialty_target', `${action.actor} has too few markers in ${issueId}`);
+          }
+        }
+        applyCloserPower(next, action.actor, fromIssues, toIssue);
+        if (next.recordTelemetry) next.actionHistory.push(action);
+        if (getClosingPowerActors(next).length === 0) finishClosingScoring(next);
+      } else {
+        return fail('specialty_not_standalone', 'This Specialty resolves with a Case card');
+      }
+    } else if (action.type === 'pass_specialty') {
+      if (next.phase !== 'closing_power_window') return fail('wrong_phase', 'There is no Specialty window open');
+      if (!getClosingPowerActors(next).includes(action.actor)) {
+        return fail('specialty_unavailable', `${action.actor} has no pending Specialty window`);
+      }
+      // Declining spends the one-time window without revealing the card.
+      next.players[action.actor].specialtyUsed = true;
+      if (next.recordTelemetry) next.actionHistory.push(action);
+      appendEvent(next, 'specialty_declined', {}, action.actor);
+      if (getClosingPowerActors(next).length === 0) finishClosingScoring(next);
+    } else if (action.type === 'commit_split') {
       if (next.phase !== 'round_split_commit') return fail('wrong_phase', 'Briefs are not being divided now');
       const side = SIDE_BY_SEAT[action.actor];
       const brief = next.briefs[side];
@@ -245,7 +394,7 @@ export function applyAction(state: GameState, value: unknown): ApplyActionResult
       const validated = validateCardResolution(next, action);
       if ('ok' in validated) return validated;
 
-      const { side, actionType, chosenIssue } = validated;
+      const { side, actionType, chosenIssue, retargeting } = validated;
       const partner = PARTNER_BY_SEAT[action.actor];
       const issue = next.issues[chosenIssue];
       if (actionType === 'lead') {
@@ -254,6 +403,20 @@ export function applyAction(state: GameState, value: unknown): ApplyActionResult
         issue.firmMarkers[action.actor] += next.rules.coCounselOwnMarkers;
         issue.firmMarkers[partner] += next.rules.coCounselPartnerMarkers;
         issue.jointWork[side] += next.rules.coCounselJointWork;
+      }
+
+      if (action.useSpecialty === true) {
+        if (retargeting) {
+          markCardPowerSpent(next, action.actor, { slot: action.slot, chosenIssue });
+        } else if (canBoostCaseCard(next, action.actor, chosenIssue)) {
+          issue.firmMarkers[action.actor] += 1;
+          markCardPowerSpent(next, action.actor, { slot: action.slot, chosenIssue });
+        } else if (actionType === 'co_counsel' && canBoostCoCounsel(next, action.actor)) {
+          issue.jointWork[side] += 1;
+          markCardPowerSpent(next, action.actor, { slot: action.slot, chosenIssue });
+        } else {
+          return fail('specialty_not_applicable', 'This Specialty does not apply to that Case card');
+        }
       }
 
       const docketCard = next.docket.find((entry) => entry.slot === action.slot);
