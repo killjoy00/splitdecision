@@ -6,6 +6,7 @@ export {
   chooseHardAction,
   chooseMediumAction,
   rankBotActions,
+  sampleBotInformationState,
   scoreMediumAction,
   type AutomatedBotLevel,
   type BotWeights,
@@ -53,6 +54,8 @@ export {
   type MatchupSummary,
   type RandomGameSummary,
   type SimulationSummary,
+  type SpecialtyTelemetry,
+  type SpecialtyTelemetryById,
 } from './simulation.js';
 export { resolveVerdict } from './verdict.js';
 export { getPlayerView } from './visibility.js';

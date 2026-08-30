@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   GAME_DATA,
+  SEAT_ORDER,
+  applyAction,
   assertGameInvariants,
   createGame,
   hashGameState,
@@ -10,9 +12,9 @@ import {
 test('seeded setup creates mirrored hearings and unique Closing Arguments', () => {
   const state = createGame({ seed: 'setup-test' });
   assert.deepEqual(state.hearingSchedule.slice(3), state.hearingSchedule.slice(0, 3));
-  assert.equal(state.docket.length, 6);
+  assert.equal(state.docket.length, 0, 'Round 1 stays hidden during Specialty selection');
   assert.equal(state.caseDeck.length, 36);
-  assert.equal(state.caseDeckIndex, 6);
+  assert.equal(state.caseDeckIndex, 0);
 
   const closing = Object.values(state.players).map(
     (player) => player.closingArgumentIssue,
@@ -20,6 +22,22 @@ test('seeded setup creates mirrored hearings and unique Closing Arguments', () =
   assert.equal(closing.length, 4);
   assert.equal(new Set(closing).size, 4);
   assert.equal(state.closingUndealt.length, 2);
+});
+
+test('Round 1 is revealed only after every firm locks a Specialty', () => {
+  let state = createGame({ seed: 'setup-order' });
+  for (const seat of SEAT_ORDER) {
+    const result = applyAction(state, {
+      type: 'choose_specialty',
+      actor: seat,
+      specialtyId: state.players[seat].specialtyOptions[0],
+    });
+    assert.equal(result.ok, true, result.ok ? '' : result.error.message);
+    state = result.state;
+  }
+  assert.equal(state.phase, 'round_split_commit');
+  assert.equal(state.docket.length, 6);
+  assert.equal(state.caseDeckIndex, 6);
 });
 
 test('same seed creates the same initial state', () => {

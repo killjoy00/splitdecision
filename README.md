@@ -25,7 +25,7 @@ The playable Milestone 0 build includes:
 - player-view redaction for secret Closing Argument information
 - Easy random, Medium heuristic, and Hard sampled-lookahead bots
 - difficulty matchups and gameplay-differentiation simulation metrics
-- engine tests and invariant checks
+- engine, Worker integration, and mobile-browser smoke tests
 
 The Specialty module is now active. Each firm is secretly dealt two of the twelve
 Specialties during setup and locks one before Round 1. Every card carries a
@@ -41,13 +41,15 @@ Bonuses are paid after Closing Arguments score and before the verdict, so they
 count toward the team floor. Set `rules.specialtiesEnabled: false` to play the
 earlier base-rules game.
 
-The engine has completed a 1,000-game random-bot validation run without an invariant failure. The aggregate report is checked in at `docs/milestone-0-simulation.json`; it validates execution and rough seat symmetry, not strategic balance. The simulator supports larger local or CI runs.
+After the Specialty timing and hidden-information fixes, the engine completed a fresh 1,000-game random-bot validation without an invariant failure. The protocol-v2 report, including per-Specialty offer, pick, use, bonus, and win counts, is checked in at `docs/milestone-0-simulation-v2.json`. It validates execution and rough seat symmetry, not strategic balance; earlier reports describe the superseded rules implementation.
 
 ## Run locally
 
 ```bash
 npm install
 npm test
+npx playwright install chromium
+npm run test:e2e
 npm run simulate -- --games 1000 --seed demo
 npm run analyze:gameplay -- --profile-games 300 --matchup-games 300 --hard-games 80
 npm run dev
@@ -68,7 +70,7 @@ Then open the Vite URL on each device. Localhost origins automatically use `http
 
 Pushes to `main` deploy `web-dist` through GitHub Pages using `.github/workflows/deploy-pages.yml`. In repository **Settings → Pages**, select **GitHub Actions** as the source. The production custom domain is `splitdecision.planitnow.us`, so Vite's default `/` base path is intentional.
 
-Remote play runs separately on Cloudflare Workers and Durable Objects. Its deployment is deliberately manual: add the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets, then run the **Deploy remote play service** workflow. Wrangler attaches the first-level custom domain `splitdecision-api.planitnow.us` and Cloudflare creates its DNS record and certificate. See [`docs/REMOTE_PLAY.md`](docs/REMOTE_PLAY.md) for the exact setup and recovery steps.
+Remote play runs on Cloudflare Workers and Durable Objects. Add the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets once. On every push to `main`, the production workflow deploys and health-checks protocol v2 of the Worker before it deploys GitHub Pages, preventing an incompatible client/server pair. The **Deploy remote play service** workflow remains available for an emergency Worker-only redeploy. See [`docs/REMOTE_PLAY.md`](docs/REMOTE_PLAY.md) for setup and recovery.
 
 ## Architecture
 

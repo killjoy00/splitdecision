@@ -115,6 +115,17 @@ export interface PlayerState {
   specialtyBonusAwarded: number;
 }
 
+export interface PendingIssueScore {
+  issueId: IssueId;
+  source: LeadCreditSource;
+}
+
+export interface SpecialtyWindowState {
+  kind: 'before_issue_scores' | 'after_closing_reveal';
+  issueId: IssueId | null;
+  pendingSeats: SeatId[];
+}
+
 export interface IssueState {
   firmMarkers: Record<SeatId, number>;
   jointWork: Record<SideId, number>;
@@ -144,7 +155,7 @@ export type GamePhase =
   | 'round_split_commit'
   | 'round_choose_commit'
   | 'round_argue'
-  | 'closing_power_window'
+  | 'specialty_power_window'
   | 'closing_scoring'
   | 'complete';
 
@@ -209,6 +220,8 @@ export interface GameState {
   actionsResolvedThisRound: number;
   closingUndealt: IssueId[];
   closingRevealed: IssueId[];
+  specialtyWindow: SpecialtyWindowState | null;
+  pendingIssueScores: PendingIssueScore[];
   hearingResults: HearingResult[];
   provisionalVerdict: VerdictResult | null;
   specialtyBonuses: SpecialtyBonusResult[];

@@ -119,6 +119,16 @@ test('private Closing Argument and committed split information is redacted', () 
   const setupEvent = chooserView.eventLog.find((event) => event.type === 'setup_complete');
   assert.ok(setupEvent);
   assert.equal(Object.hasOwn(setupEvent.payload, 'seed'), false);
+  assert.equal(
+    chooserView.eventLog.some((event) => [
+      'specialty_chosen',
+      'split_committed',
+      'brief_choice_committed',
+      'specialty_passed',
+      'specialty_window_opened',
+    ].includes(event.type)),
+    false,
+  );
 
   for (const [seat, player] of Object.entries(chooserView.players)) {
     if (seat === chooser) {
@@ -127,6 +137,18 @@ test('private Closing Argument and committed split information is redacted', () 
       assert.equal(player.closingArgumentIssue, null);
     }
   }
+});
+
+test('public hashes keep unrevealed Specialties private after Closing reveal', () => {
+  const first = completeSpecialtyDraft(createGame({ seed: 'specialty-public-hash' }));
+  first.closingRevealed = [first.players.P1.closingArgumentIssue];
+  const second = structuredClone(first);
+  const temporary = second.players.P1.specialtyId;
+  second.players.P1.specialtyId = second.players.D1.specialtyId;
+  second.players.D1.specialtyId = temporary;
+
+  assert.notEqual(hashGameState(first), hashGameState(second));
+  assert.equal(hashPublicGameState(first), hashPublicGameState(second));
 });
 
 

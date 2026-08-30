@@ -1,6 +1,7 @@
 import { SELF, env, runDurableObjectAlarm } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import type {
+  RemoteHealth,
   RemoteApiResult,
   RemotePlayerSnapshot,
   RemoteSession,
@@ -53,6 +54,14 @@ async function join(code: string, seat: string, name: string) {
 }
 
 describe('remote game rooms', () => {
+  it('reports the current protocol and room schema', async () => {
+    const health = await api<RemoteHealth>('/api/health');
+    expect(health.result).toEqual({
+      ok: true,
+      value: { protocolVersion: 2, roomSchemaVersion: 2, status: 'ok' },
+    });
+  });
+
   it('allows only one player to claim a seat during a concurrent join', async () => {
     const host = await createRoom('Concurrency Host');
     const requests = await Promise.all([
@@ -83,6 +92,9 @@ describe('remote game rooms', () => {
     expect(started.result.ok).toBe(true);
     if (!started.result.ok || !started.result.value.game) throw new Error('game did not start');
     expect(started.result.value.legalActions.length).toBeGreaterThan(0);
+    expect(started.result.value.protocolVersion).toBe(2);
+    expect(started.result.value.pendingActors).toEqual(['P1']);
+    const publicRevision = started.result.value.lobby.revision;
     expect(started.result.value.game.players.P1.closingArgumentIssue).not.toBeNull();
     expect(started.result.value.game.players.D1.closingArgumentIssue).toBeNull();
 
@@ -94,6 +106,10 @@ describe('remote game rooms', () => {
       body: { action: { ...firstAction, actor: 'D1' } },
     });
     expect(acted.result.ok).toBe(true);
+    if (!acted.result.ok) throw new Error(acted.result.error);
+    expect(acted.result.value.pendingActors).toEqual([]);
+    expect(acted.result.value.pendingActor).toBeNull();
+    expect(acted.result.value.lobby.revision).toBe(publicRevision);
 
     const defenseView = await api<RemotePlayerSnapshot>(`/api/rooms/${code}/state`, {
       token: d1.session.token,
@@ -102,6 +118,14 @@ describe('remote game rooms', () => {
     if (!defenseView.result.ok || !defenseView.result.value.game) throw new Error('missing defense view');
     expect(defenseView.result.value.game.briefs.plaintiff.submittedSplit).toBeNull();
     expect(defenseView.result.value.game.players.P1.closingArgumentIssue).toBeNull();
+    expect(defenseView.result.value.pendingActors).toEqual(['D1']);
+    expect(defenseView.result.value.game.eventLog.some((event) => [
+      'specialty_chosen',
+      'split_committed',
+      'brief_choice_committed',
+      'specialty_passed',
+      'specialty_window_opened',
+    ].includes(event.type))).toBe(false);
 
     const rejected = await api<RemotePlayerSnapshot>(`/api/rooms/${code}/state`, {
       token: 'not-a-real-token',
@@ -157,6 +181,57 @@ describe('remote game rooms', () => {
     if (!current.result.ok) throw new Error(current.result.error);
     expect(current.result.value.game?.phase).toBe('complete');
     expect(current.result.value.game?.verdict).not.toBeNull();
+
+    const rematch = await api<RemotePlayerSnapshot>(`/api/rooms/${code}/start`, {
+      method: 'POST',
+      token,
+      body: { seed: 'remote-rematch', specialtiesEnabled: false },
+    });
+    expect(rematch.result.ok).toBe(true);
+    if (!rematch.result.ok || !rematch.result.value.game) throw new Error('rematch failed');
+    expect(['round_split_commit', 'round_choose_commit']).toContain(rematch.result.value.game.phase);
+    expect(rematch.result.value.pendingActors).toEqual(['P1']);
+    expect(rematch.result.value.game.rules.specialtiesEnabled).toBe(false);
+  });
+
+  it('releases lost seats, invalidates the old token, and transfers host', async () => {
+    const host = await createRoom('Recovery Host');
+    const guest = await join(host.session.code, 'D1', 'Recovering Guest');
+
+    const released = await api<RemotePlayerSnapshot>(`/api/rooms/${host.session.code}/release`, {
+      method: 'POST',
+      token: host.session.token,
+      body: { seat: 'D1', controller: 'human' },
+    });
+    expect(released.result.ok).toBe(true);
+    if (!released.result.ok) throw new Error(released.result.error);
+    expect(released.result.value.lobby.seats.find((seat) => seat.seat === 'D1')).toMatchObject({
+      claimed: false,
+      controller: 'human',
+    });
+    const invalidated = await api<RemotePlayerSnapshot>(`/api/rooms/${host.session.code}/state`, {
+      token: guest.session.token,
+    });
+    expect(invalidated.response.status).toBe(401);
+
+    const replacement = await join(host.session.code, 'D1', 'New Guest');
+    const left = await api<{ protocolVersion: 2; closed: boolean }>(
+      `/api/rooms/${host.session.code}/leave`,
+      { method: 'POST', token: host.session.token },
+    );
+    expect(left.result).toEqual({
+      ok: true,
+      value: { protocolVersion: 2, closed: false },
+    });
+    const lobby = await api(`/api/rooms/${host.session.code}/lobby`);
+    expect(lobby.result.ok).toBe(true);
+    if (!lobby.result.ok) throw new Error(lobby.result.error);
+    expect((lobby.result.value as { hostSeat: string }).hostSeat).toBe('D1');
+
+    const successorView = await api<RemotePlayerSnapshot>(`/api/rooms/${host.session.code}/state`, {
+      token: replacement.session.token,
+    });
+    expect(successorView.result.ok).toBe(true);
   });
 
   it('lets the host select and change bot difficulty', async () => {

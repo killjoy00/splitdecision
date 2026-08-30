@@ -4,6 +4,7 @@ import { createRandom, randomItem, shuffled, type RandomSource } from './random.
 import { applyAction } from './reducer.js';
 import { PARTNER_BY_SEAT, SIDE_BY_SEAT } from './selectors.js';
 import { SPECIALTY_BY_ID } from './specialties.js';
+import { enumerateThreeThreeSplits } from './splits.js';
 import {
   ISSUE_IDS,
   SEAT_ORDER,
@@ -83,6 +84,103 @@ function actionKey(action: GameAction): string {
     return `specialty:use:${action.toIssue ?? 'self'}:${(action.fromIssues ?? []).join(',')}`;
   }
   return `play:${action.slot}:${action.chosenIssue}:${action.focusAction ?? 'fixed'}:${action.useSpecialty ? 'power' : 'plain'}`;
+}
+
+function cloneState(state: GameState): GameState {
+  return JSON.parse(JSON.stringify(state)) as GameState;
+}
+
+/**
+ * Builds one complete, legal-enough world from only the information the bot is
+ * entitled to know. Medium and Hard evaluate this model instead of the
+ * canonical state, so changing an opponent's private cards cannot change the
+ * bot's choice when its visible position is otherwise identical.
+ */
+export function sampleBotInformationState(
+  state: GameState,
+  actor: SeatId,
+  random: RandomSource,
+): GameState {
+  const modeled = cloneState(state);
+  const closingIsPublic = state.closingRevealed.length > 0 || state.phase === 'complete';
+
+  if (!closingIsPublic) {
+    const ownClosing = state.players[actor].closingArgumentIssue;
+    const unknownClosings = shuffled(
+      ISSUE_IDS.filter((issueId) => issueId !== ownClosing),
+      random,
+    );
+    let closingIndex = 0;
+    for (const seat of SEAT_ORDER) {
+      if (seat === actor) continue;
+      modeled.players[seat].closingArgumentIssue = unknownClosings[closingIndex] as IssueId;
+      closingIndex += 1;
+    }
+    modeled.closingUndealt = unknownClosings.slice(closingIndex);
+  }
+
+  if (state.rules.specialtiesEnabled) {
+    const unavailable = new Set(state.players[actor].specialtyOptions);
+    if (state.players[actor].specialtyId) unavailable.add(state.players[actor].specialtyId);
+    for (const seat of SEAT_ORDER) {
+      const player = state.players[seat];
+      if (seat !== actor && player.specialtyRevealed && player.specialtyId) {
+        unavailable.add(player.specialtyId);
+        modeled.players[seat].specialtyOptions = [player.specialtyId];
+      }
+    }
+    const unknownSpecialties = shuffled(
+      GAME_DATA.specialties.map((entry) => entry.id).filter((id) => !unavailable.has(id)),
+      random,
+    );
+    let specialtyIndex = 0;
+    for (const seat of SEAT_ORDER) {
+      if (seat === actor || state.players[seat].specialtyRevealed) continue;
+      const first = unknownSpecialties[specialtyIndex];
+      const second = unknownSpecialties[specialtyIndex + 1];
+      if (!first || !second) throw new Error('Not enough Specialties to model hidden information');
+      specialtyIndex += 2;
+      const modeledAsSelected = state.phase === 'setup_specialty_choice'
+        ? random.next() < 0.5
+        : true;
+      modeled.players[seat].specialtyId = modeledAsSelected ? first : null;
+      modeled.players[seat].specialtyOptions = [first, second];
+    }
+  }
+
+  const seenCardIds = new Set(state.caseDeck.slice(0, state.caseDeckIndex));
+  modeled.caseDeck = [
+    ...state.caseDeck.slice(0, state.caseDeckIndex),
+    ...shuffled(
+      GAME_DATA.caseCards.map((card) => card.id).filter((id) => !seenCardIds.has(id)),
+      random,
+    ),
+  ];
+
+  if (state.phase === 'round_split_commit') {
+    for (const side of ['plaintiff', 'defense'] as const) {
+      const brief = state.briefs[side];
+      if (brief.divider !== actor) {
+        modeled.briefs[side].submittedSplit = random.next() < 0.5
+          ? randomItem(enumerateThreeThreeSplits(), random)
+          : null;
+      }
+    }
+  }
+  if (state.phase === 'round_choose_commit') {
+    for (const side of ['plaintiff', 'defense'] as const) {
+      const brief = state.briefs[side];
+      if (brief.chooser !== actor) {
+        modeled.briefs[side].chosenBriefIndex = random.next() < 0.5
+          ? random.int(2) as 0 | 1
+          : null;
+      }
+    }
+  }
+
+  // Private historical payloads are never input to a decision.
+  modeled.actionHistory = [];
+  return modeled;
 }
 
 function preClosingReputation(state: GameState): Record<SeatId, number> {
@@ -330,24 +428,6 @@ function specialtyDraftValue(state: GameState, actor: SeatId, specialtyId: strin
   return reach * 0.9 + specialty.bonusPoints;
 }
 
-/**
- * Discourages spending a `before_issue_scores` power early. The marker only
- * matters in the Hearing that is about to resolve, or in a Closing Argument
- * Issue the holder already knows will be revealed.
- */
-function powerTimingAdjustment(state: GameState, actor: SeatId, action: GameAction): number {
-  if (action.type !== 'use_specialty' || state.phase !== 'round_argue') return 0;
-  const specialtyId = state.players[actor].specialtyId;
-  const specialty = specialtyId === null ? undefined : SPECIALTY_BY_ID.get(specialtyId);
-  const issueId = specialty?.powerIssue;
-  if (!issueId) return 0;
-
-  const distance = roundsUntilHearing(state, issueId);
-  if (distance === 0) return 0;
-  if (issueId === state.players[actor].closingArgumentIssue) return -4;
-  return -28;
-}
-
 function scoreMediumActionWithClosing(
   state: GameState,
   actor: SeatId,
@@ -375,8 +455,7 @@ function scoreMediumActionWithClosing(
   const result = applyAction(state, action);
   if (!result.ok) return -Infinity;
   return positionUtility(result.state, actor, knownClosingIssue)
-    - positionUtility(state, actor, knownClosingIssue)
-    + powerTimingAdjustment(state, actor, action);
+    - positionUtility(state, actor, knownClosingIssue);
 }
 
 export function scoreMediumAction(
@@ -384,29 +463,19 @@ export function scoreMediumAction(
   actor: SeatId,
   action: GameAction,
 ): number {
-  return scoreMediumActionWithClosing(
+  const modeled = sampleBotInformationState(
     state,
     actor,
-    action,
-    state.players[actor].closingArgumentIssue,
+    createRandom(
+      `medium-information:${state.round}:${state.phase}:${state.actionsResolvedThisRound}:${state.hearingResults.length}:${actor}`,
+    ),
   );
-}
-
-function sampledUnknownClosings(
-  state: GameState,
-  actor: SeatId,
-  random: RandomSource,
-): Partial<Record<SeatId, IssueId>> {
-  const ownClosing = state.players[actor].closingArgumentIssue;
-  const candidates = shuffled(ISSUE_IDS.filter((issueId) => issueId !== ownClosing), random);
-  const result: Partial<Record<SeatId, IssueId>> = { [actor]: ownClosing };
-  let candidateIndex = 0;
-  for (const seat of SEAT_ORDER) {
-    if (seat === actor) continue;
-    result[seat] = candidates[candidateIndex] as IssueId;
-    candidateIndex += 1;
-  }
-  return result;
+  return scoreMediumActionWithClosing(
+    modeled,
+    actor,
+    action,
+    modeled.players[actor].closingArgumentIssue,
+  );
 }
 
 function chooseModeledAction(
@@ -431,7 +500,6 @@ function hardRolloutValue(
   actor: SeatId,
   random: RandomSource,
 ): number {
-  const sampledClosings = sampledUnknownClosings(state, actor, random);
   let rollout = state;
   for (let depth = 0; depth < HARD_LOOKAHEAD_ACTIONS && rollout.phase !== 'complete'; depth += 1) {
     const nextActor = getPendingActors(rollout)[0] ?? null;
@@ -439,7 +507,7 @@ function hardRolloutValue(
     const action = chooseModeledAction(
       rollout,
       nextActor,
-      sampledClosings[nextActor] ?? null,
+      rollout.players[nextActor].closingArgumentIssue,
       random,
     );
     if (!action) break;
@@ -462,8 +530,13 @@ function scoreHardAction(
   if (action.type === 'commit_split') {
     let sampledScore = 0;
     for (let sample = 0; sample < HARD_SAMPLES; sample += 1) {
-      const modeled = sampledUnknownClosings(state, actor, random)[PARTNER_BY_SEAT[actor]] ?? null;
-      sampledScore += splitOpportunityValue(state, actor, action.groups, ownClosing, modeled);
+      sampledScore += splitOpportunityValue(
+        state,
+        actor,
+        action.groups,
+        ownClosing,
+        state.players[PARTNER_BY_SEAT[actor]].closingArgumentIssue,
+      );
     }
     return mediumScore * 0.35 + (sampledScore / HARD_SAMPLES) * 0.65;
   }
@@ -488,13 +561,19 @@ export function rankBotActions(
 ): ScoredBotAction[] {
   const legalActions = getLegalActions(state, actor);
   const hardRandom = random ?? createRandom(
-    `${state.seed}:hard-evaluation:${state.eventLog.length}:${actor}`,
+    `hard-evaluation:${state.round}:${state.phase}:${state.actionsResolvedThisRound}:${state.hearingResults.length}:${actor}`,
   );
+  const modeled = sampleBotInformationState(state, actor, hardRandom);
   return legalActions.map((action) => ({
     action,
     score: level === 'hard'
-      ? scoreHardAction(state, actor, action, hardRandom)
-      : scoreMediumAction(state, actor, action),
+      ? scoreHardAction(modeled, actor, action, hardRandom)
+      : scoreMediumActionWithClosing(
+          modeled,
+          actor,
+          action,
+          modeled.players[actor].closingArgumentIssue,
+        ),
   })).sort((left, right) => right.score - left.score || actionKey(left.action).localeCompare(actionKey(right.action)));
 }
 

@@ -41,9 +41,9 @@ export function getPendingActors(state: GameState): SeatId[] {
   if (state.phase === 'setup_specialty_choice') {
     return SEAT_ORDER.filter((seat) => state.players[seat].specialtyId === null);
   }
-  if (state.phase === 'closing_power_window') {
-    return SEAT_ORDER.filter((seat) => hasUnusedPower(state, seat)
-      && getSeatSpecialty(state, seat)?.powerTiming === 'after_closing_reveal');
+  if (state.phase === 'specialty_power_window') {
+    const actor = state.specialtyWindow?.pendingSeats[0];
+    return actor ? [actor] : [];
   }
   if (state.phase === 'round_split_commit') {
     return (['plaintiff', 'defense'] as const)
@@ -72,9 +72,13 @@ export function getLegalActions(state: GameState, actor: SeatId): GameAction[] {
     }));
   }
 
-  if (state.phase === 'closing_power_window') {
+  if (state.phase === 'specialty_power_window') {
     if (!getPendingActors(state).includes(actor)) return [];
     const actions: GameAction[] = [{ type: 'pass_specialty', actor }];
+    if (state.specialtyWindow?.kind === 'before_issue_scores') {
+      return [...actions, { type: 'use_specialty', actor }];
+    }
+    if (state.specialtyWindow?.kind !== 'after_closing_reveal') return [];
     const sources = unrevealedIssues(state)
       .filter((issueId) => state.issues[issueId].firmMarkers[actor] > 0);
     for (const toIssue of state.closingRevealed) {

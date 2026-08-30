@@ -9,6 +9,7 @@ import {
   getLegalActions,
   getPendingActors,
   getPlayerView,
+  hashPublicGameState,
   type AutomatedBotLevel,
   type GameState,
   type SeatId,
@@ -22,6 +23,7 @@ import type {
   RemoteSeat,
   RemoteSession,
 } from '../../src/remote/protocol.js';
+import { REMOTE_PROTOCOL_VERSION } from '../../src/remote/protocol.js';
 
 interface StoredSeat {
   name: string;
@@ -30,7 +32,7 @@ interface StoredSeat {
 }
 
 interface StoredRoom {
-  version: 1;
+  version: 2;
   code: string;
   revision: number;
   hostSeat: SeatId;
@@ -80,6 +82,46 @@ function createRoomCode(): string {
   return Array.from(values, (value) => ROOM_ALPHABET[value % ROOM_ALPHABET.length]).join('');
 }
 
+function publicRevision(room: StoredRoom): number {
+  if (!room.game) return room.revision;
+  const phaseIndex = [
+    'setup_specialty_choice',
+    'round_split_commit',
+    'round_choose_commit',
+    'round_argue',
+    'specialty_power_window',
+    'closing_scoring',
+    'complete',
+  ].indexOf(room.game.phase);
+  const revealedSpecialties = SEAT_ORDER.filter(
+    (seat) => room.game?.players[seat].specialtyRevealed,
+  ).length;
+  return room.game.round * 100_000
+    + phaseIndex * 10_000
+    + room.game.actionsResolvedThisRound * 100
+    + room.game.hearingResults.length * 10
+    + revealedSpecialties;
+}
+
+function logCompletedGame(game: GameState): void {
+  if (!game.verdict) return;
+  console.log(JSON.stringify({
+    event: 'split_decision_game_completed',
+    protocolVersion: REMOTE_PROTOCOL_VERSION,
+    winningSide: game.verdict.winningSide,
+    winningSeat: game.verdict.winningFirm,
+    specialties: SEAT_ORDER.map((seat) => ({
+      offered: game.players[seat].specialtyOptions,
+      selected: game.players[seat].specialtyId,
+      used: game.players[seat].specialtyUsed,
+      bonusEarned: game.specialtyBonuses.some(
+        (bonus) => bonus.seatId === seat && bonus.earned,
+      ),
+      won: game.verdict?.winningFirm === seat,
+    })),
+  }));
+}
+
 async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', encoder.encode(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -100,8 +142,10 @@ function lobbyFor(room: StoredRoom): RemoteLobby {
     claimed: room.seats[seat].controller !== 'human' || room.seats[seat].tokenHash !== null,
   }));
   return {
+    protocolVersion: REMOTE_PROTOCOL_VERSION,
     code: room.code,
-    revision: room.revision,
+    // Do not expose private commitment timing through the persistence counter.
+    revision: publicRevision(room),
     hostSeat: room.hostSeat,
     phase: room.game?.phase === 'complete' ? 'complete' : room.game ? 'playing' : 'lobby',
     seats,
@@ -194,7 +238,11 @@ export class GameRoom extends DurableObject<Env> {
     const row = this.ctx.storage.sql.exec<RoomRow>(
       'SELECT state FROM room_state WHERE id = 1',
     ).toArray()[0];
-    return row ? JSON.parse(row.state) as StoredRoom : null;
+    if (!row) return null;
+    const parsed = JSON.parse(row.state) as Partial<StoredRoom>;
+    // Version 1 games predate Specialty scoring windows and are not safely
+    // replayable. Treat them as expired instead of serving malformed state.
+    return parsed.version === 2 ? parsed as StoredRoom : null;
   }
 
   private writeRoom(room: StoredRoom): void {
@@ -204,6 +252,10 @@ export class GameRoom extends DurableObject<Env> {
       'INSERT INTO room_state (id, state) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET state = excluded.state',
       JSON.stringify(room),
     );
+  }
+
+  private deleteRoom(): void {
+    this.ctx.storage.sql.exec('DELETE FROM room_state');
   }
 
   private async extendLifetime(): Promise<void> {
@@ -234,25 +286,33 @@ export class GameRoom extends DurableObject<Env> {
       if (!actor) break;
       const level = room.game.players[actor].controller as AutomatedBotLevel;
       const random = createRandom(
-        `${room.game.seed}:remote-bot:${room.game.actionHistory.length}`,
+        `remote-bot:${hashPublicGameState(room.game)}:${actor}`,
       );
       const action = chooseBotAction(room.game, actor, level, random);
       const result = applyAction(room.game, action);
       if (!result.ok) return failure(500, 'bot_action_failed', result.error.message);
       room.game = result.state;
       steps += 1;
-      if (steps > 100) return failure(500, 'bot_loop', 'Bot action limit exceeded.');
+      if (steps > 160) return failure(500, 'bot_loop', 'Bot action limit exceeded.');
     }
     return null;
   }
 
   private snapshot(room: StoredRoom, seat: SeatId): RemotePlayerSnapshot {
     const game = room.game ? getPlayerView(room.game, seat) : null;
-    const pendingActors = room.game ? getPendingActors(room.game) : [];
-    const legalActions = room.game && pendingActors.includes(seat)
+    const canonicalPending = room.game ? getPendingActors(room.game) : [];
+    const privatePhase = room.game?.phase === 'setup_specialty_choice'
+      || room.game?.phase === 'round_split_commit'
+      || room.game?.phase === 'round_choose_commit'
+      || room.game?.phase === 'specialty_power_window';
+    const pendingActors = privatePhase
+      ? canonicalPending.includes(seat) ? [seat] : []
+      : canonicalPending;
+    const legalActions = room.game && canonicalPending.includes(seat)
       ? getLegalActions(room.game, seat)
       : [];
     return {
+      protocolVersion: REMOTE_PROTOCOL_VERSION,
       lobby: lobbyFor(room),
       seat,
       game,
@@ -282,7 +342,7 @@ export class GameRoom extends DurableObject<Env> {
     ])) as Record<SeatId, StoredSeat>;
     seats.P1.tokenHash = tokenHash;
     const room: StoredRoom = {
-      version: 1,
+      version: 2,
       code,
       revision: 0,
       hostSeat: 'P1',
@@ -360,11 +420,17 @@ export class GameRoom extends DurableObject<Env> {
     return { ok: true, value: this.snapshot(room, room.hostSeat) };
   }
 
-  async start(token: string, seedValue: unknown): Promise<RemoteApiResult<RemotePlayerSnapshot>> {
+  async start(
+    token: string,
+    seedValue: unknown,
+    specialtiesEnabledValue: unknown,
+  ): Promise<RemoteApiResult<RemotePlayerSnapshot>> {
     const tokenHash = await sha256Hex(token);
     const room = this.readRoom();
     if (!room) return failure(404, 'room_not_found', 'Room not found or expired.');
-    if (room.game) return failure(409, 'game_started', 'This game has already started.');
+    if (room.game && room.game.phase !== 'complete') {
+      return failure(409, 'game_started', 'This game has already started.');
+    }
     if (!this.requireHost(room, tokenHash)) return failure(403, 'host_required', 'Only the host can start the game.');
     const openSeat = SEAT_ORDER.find((seat) => {
       const candidate = room.seats[seat];
@@ -378,7 +444,14 @@ export class GameRoom extends DurableObject<Env> {
       seat,
       room.seats[seat].controller,
     ]));
-    room.game = createGame({ seed, controllers });
+    const specialtiesEnabled = specialtiesEnabledValue === undefined
+      ? true
+      : specialtiesEnabledValue === true;
+    room.game = createGame({
+      seed,
+      controllers,
+      rules: { specialtiesEnabled },
+    });
     const botFailure = this.settleBots(room);
     if (botFailure) return botFailure;
     assertGameInvariants(room.game);
@@ -410,15 +483,103 @@ export class GameRoom extends DurableObject<Env> {
       return failure(400, 'invalid_action', 'Action must be an object.');
     }
     const action = { ...(actionValue as Record<string, unknown>), actor: seat };
+    const wasComplete = room.game.phase === 'complete';
     const result = applyAction(room.game, action);
     if (!result.ok) return failure(400, result.error.code, result.error.message);
     room.game = result.state;
     const botFailure = this.settleBots(room);
     if (botFailure) return botFailure;
+    if (!wasComplete && room.game.phase === 'complete') logCompletedGame(room.game);
     assertGameInvariants(room.game);
     this.writeRoom(room);
     await this.extendLifetime();
     return { ok: true, value: this.snapshot(room, seat) };
+  }
+
+  async release(
+    token: string,
+    seatValue: unknown,
+    controllerValue: unknown,
+  ): Promise<RemoteApiResult<RemotePlayerSnapshot>> {
+    const tokenHash = await sha256Hex(token);
+    const room = this.readRoom();
+    if (!room) return failure(404, 'room_not_found', 'Room not found or expired.');
+    if (!this.requireHost(room, tokenHash)) {
+      return failure(403, 'host_required', 'Only the host can release or replace a seat.');
+    }
+    const seat = parseSeat(seatValue);
+    const controller = parseController(controllerValue);
+    if (!seat || seat === room.hostSeat || !controller) {
+      return failure(400, 'invalid_seat', 'Choose a non-host seat and replacement type.');
+    }
+    if (room.game && controller === 'human') {
+      return failure(409, 'game_in_progress', 'An active seat can only be replaced by a bot.');
+    }
+
+    const selected = room.seats[seat];
+    selected.tokenHash = null;
+    selected.controller = controller;
+    selected.name = controller === 'human'
+      ? `Open ${seat} seat`
+      : botName(controller, seat);
+    if (room.game) {
+      room.game.players[seat].controller = controller;
+      const botFailure = this.settleBots(room);
+      if (botFailure) return botFailure;
+      assertGameInvariants(room.game);
+    }
+    this.writeRoom(room);
+    await this.extendLifetime();
+    return { ok: true, value: this.snapshot(room, room.hostSeat) };
+  }
+
+  async leave(token: string): Promise<RemoteApiResult<{
+    protocolVersion: typeof REMOTE_PROTOCOL_VERSION;
+    closed: boolean;
+  }>> {
+    const tokenHash = await sha256Hex(token);
+    const room = this.readRoom();
+    if (!room) return failure(404, 'room_not_found', 'Room not found or expired.');
+    const seat = this.seatForToken(room, tokenHash);
+    if (!seat) return failure(401, 'invalid_session', 'This player session is not valid.');
+
+    if (!room.game) {
+      room.seats[seat] = {
+        name: `Open ${seat} seat`,
+        controller: 'human',
+        tokenHash: null,
+      };
+    } else {
+      room.seats[seat] = {
+        name: botName('easy', seat),
+        controller: 'easy',
+        tokenHash: null,
+      };
+      room.game.players[seat].controller = 'easy';
+    }
+
+    if (seat === room.hostSeat) {
+      const successor = SEAT_ORDER.find((candidate) => room.seats[candidate].tokenHash !== null);
+      if (!successor) {
+        this.deleteRoom();
+        return {
+          ok: true,
+          value: { protocolVersion: REMOTE_PROTOCOL_VERSION, closed: true },
+        };
+      }
+      room.hostSeat = successor;
+    }
+    if (room.game) {
+      const botFailure = this.settleBots(room);
+      if (botFailure) return botFailure;
+      assertGameInvariants(room.game);
+    }
+    this.writeRoom(room);
+    await this.extendLifetime();
+    return {
+      ok: true,
+      value: { protocolVersion: REMOTE_PROTOCOL_VERSION, closed: false },
+    };
   }
 
   async alarm(): Promise<void> {
@@ -439,6 +600,16 @@ export default {
 
     const url = new URL(request.url);
     const parts = url.pathname.split('/').filter(Boolean);
+    if (request.method === 'GET' && url.pathname === '/api/health') {
+      return json({
+        ok: true,
+        value: {
+          protocolVersion: REMOTE_PROTOCOL_VERSION,
+          roomSchemaVersion: 2 as const,
+          status: 'ok' as const,
+        },
+      }, origin);
+    }
     if (parts[0] !== 'api' || parts[1] !== 'rooms') {
       return json(failure(404, 'not_found', 'Endpoint not found.'), origin);
     }
@@ -488,10 +659,24 @@ export default {
       return json(await room.setBot(token, body.value.seat, controller), origin);
     }
     if (operation === 'start') {
-      return json(await room.start(token, body.value.seed), origin);
+      return json(await room.start(
+        token,
+        body.value.seed,
+        body.value.specialtiesEnabled,
+      ), origin);
     }
     if (operation === 'action') {
       return json(await room.act(token, body.value.action), origin);
+    }
+    if (operation === 'release') {
+      return json(await room.release(
+        token,
+        body.value.seat,
+        body.value.controller,
+      ), origin);
+    }
+    if (operation === 'leave') {
+      return json(await room.leave(token), origin);
     }
     return json(failure(404, 'not_found', 'Endpoint not found.'), origin);
   },

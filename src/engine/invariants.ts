@@ -30,19 +30,25 @@ export function assertGameInvariants(state: GameState): void {
   invariant(new Set(state.caseDeck).size === state.caseDeck.length, 'Case deck cards must be unique');
   const canonicalCardIds = new Set(GAME_DATA.caseCards.map((card) => card.id));
   invariant(state.caseDeck.every((cardId) => canonicalCardIds.has(cardId)), 'Case deck must contain only canonical cards');
-  invariant(state.caseDeckIndex >= 6 && state.caseDeckIndex <= 36, 'Case deck index must be within 6-36');
-  invariant(state.docket.length === 6, 'current Docket must contain six cards');
-  invariant(new Set(state.docket.map((card) => card.slot)).size === 6, 'Docket slots must be unique');
-  invariant(SLOTS.every((slot) => state.docket.some((card) => card.slot === slot)), 'Docket must use slots 1-6');
-  const docketCardIds = [...state.docket]
-    .sort((left, right) => left.slot - right.slot)
-    .map((card) => card.cardId);
-  invariant(new Set(docketCardIds).size === 6, 'current Docket cards must be unique');
+  const choosingSpecialties = state.phase === 'setup_specialty_choice';
   invariant(
-    JSON.stringify(docketCardIds)
-      === JSON.stringify(state.caseDeck.slice(state.caseDeckIndex - state.rules.docketSize, state.caseDeckIndex)),
-    'current Docket must match the most recently drawn Case cards',
+    choosingSpecialties ? state.caseDeckIndex === 0 : state.caseDeckIndex >= 6 && state.caseDeckIndex <= 36,
+    'Case deck index must match setup progress',
   );
+  invariant(state.docket.length === (choosingSpecialties ? 0 : 6), 'current Docket size must match phase');
+  if (!choosingSpecialties) {
+    invariant(new Set(state.docket.map((card) => card.slot)).size === 6, 'Docket slots must be unique');
+    invariant(SLOTS.every((slot) => state.docket.some((card) => card.slot === slot)), 'Docket must use slots 1-6');
+    const docketCardIds = [...state.docket]
+      .sort((left, right) => left.slot - right.slot)
+      .map((card) => card.cardId);
+    invariant(new Set(docketCardIds).size === 6, 'current Docket cards must be unique');
+    invariant(
+      JSON.stringify(docketCardIds)
+        === JSON.stringify(state.caseDeck.slice(state.caseDeckIndex - state.rules.docketSize, state.caseDeckIndex)),
+      'current Docket must match the most recently drawn Case cards',
+    );
+  }
 
   for (const seat of SEAT_ORDER) {
     const player = state.players[seat];
@@ -125,6 +131,13 @@ export function assertGameInvariants(state: GameState): void {
     state.phase === 'round_argue' ? state.activeSeat !== null : state.activeSeat === null,
     'active seat must exist only while arguing the case',
   );
+  invariant(
+    state.phase === 'specialty_power_window' ? state.specialtyWindow !== null : state.specialtyWindow === null,
+    'Specialty window must exist only during its phase',
+  );
+  if (state.specialtyWindow) {
+    invariant(state.specialtyWindow.pendingSeats.length > 0, 'Specialty window needs a pending firm');
+  }
 
   if (state.phase === 'complete' && state.rules.specialtiesEnabled) {
     invariant(

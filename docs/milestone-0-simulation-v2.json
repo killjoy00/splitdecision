@@ -1,0 +1,49 @@
+{
+  "games": 1000,
+  "seedPrefix": "review-fixes-v2",
+  "controllers": {
+    "P1": "easy",
+    "D1": "easy",
+    "P2": "easy",
+    "D2": "easy"
+  },
+  "firmWins": {
+    "P1": 261,
+    "D1": 252,
+    "P2": 253,
+    "D2": 234
+  },
+  "sideWins": {
+    "plaintiff": 514,
+    "defense": 486
+  },
+  "specialtyMetrics": {
+    "cross_examiner": { "offered": 640, "selected": 332, "used": 279, "bonusEarned": 57, "wins": 78 },
+    "evidence_specialist": { "offered": 694, "selected": 349, "used": 282, "bonusEarned": 63, "wins": 81 },
+    "expert_coordinator": { "offered": 686, "selected": 349, "used": 287, "bonusEarned": 66, "wins": 73 },
+    "bench_advocate": { "offered": 668, "selected": 329, "used": 269, "bonusEarned": 63, "wins": 86 },
+    "jury_advocate": { "offered": 667, "selected": 331, "used": 284, "bonusEarned": 66, "wins": 88 },
+    "appellate_scholar": { "offered": 658, "selected": 315, "used": 262, "bonusEarned": 58, "wins": 84 },
+    "trial_lawyer": { "offered": 661, "selected": 336, "used": 332, "bonusEarned": 81, "wins": 70 },
+    "technical_litigator": { "offered": 660, "selected": 322, "used": 318, "bonusEarned": 81, "wins": 80 },
+    "motion_counsel": { "offered": 684, "selected": 341, "used": 339, "bonusEarned": 85, "wins": 84 },
+    "generalist": { "offered": 665, "selected": 346, "used": 346, "bonusEarned": 196, "wins": 95 },
+    "team_builder": { "offered": 665, "selected": 333, "used": 333, "bonusEarned": 154, "wins": 92 },
+    "closer": { "offered": 652, "selected": 317, "used": 305, "bonusEarned": 94, "wins": 89 }
+  },
+  "leadRate": 0.4977916666666667,
+  "coCounselRate": 0.5022083333333334,
+  "scheduledIssueRate": 0.3365138888888889,
+  "knownClosingRate": 0.16408333333333333,
+  "postHearingClosingRate": 0.1607440774107441,
+  "sideTieRate": 0.11391666666666667,
+  "internalTieRate": 0.10216666666666667,
+  "supportScoreRate": 0.8981666666666667,
+  "closeHearingRate": 0.27316666666666667,
+  "blowoutHearingRate": 0.22183333333333333,
+  "averageSideMargin": 4.044333333333333,
+  "averageScoreRange": 8.803,
+  "highestScoreEliminatedRate": 0.111,
+  "closingChangedSideRate": 0.13,
+  "closingChangedFirmRate": 0.316
+}

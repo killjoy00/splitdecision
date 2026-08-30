@@ -69,6 +69,25 @@ function setupWithActiveHolder(specialtyId, filler, seed = 'active-holder') {
   return { state: advanceToArgue(draftSpecialties(base, assignments)), holder };
 }
 
+function advanceToIssueWindow(state, issueId, occurrence = 1) {
+  let next = state;
+  let seen = 0;
+  for (let guard = 0; guard < 500; guard += 1) {
+    if (next.phase === 'specialty_power_window'
+        && next.specialtyWindow?.kind === 'before_issue_scores'
+        && next.specialtyWindow.issueId === issueId) {
+      seen += 1;
+      if (seen === occurrence) return next;
+      next = applyOrThrow(next, getLegalActions(next, next.specialtyWindow.pendingSeats[0])[0]);
+      continue;
+    }
+    const actor = SEAT_ORDER.find((seat) => getLegalActions(next, seat).length > 0);
+    assert.ok(actor, `no actor available while seeking ${issueId} window in ${next.phase}`);
+    next = applyOrThrow(next, getLegalActions(next, actor)[0]);
+  }
+  assert.fail(`did not reach ${issueId} Specialty window`);
+}
+
 const ALL_GENERALIST = {
   P1: 'generalist',
   D1: 'trial_lawyer',
@@ -133,25 +152,58 @@ test('the draft hides which opponents have already locked a Specialty', () => {
   assert.equal(view.players.D1.specialtyId, null);
 });
 
-test('a before-scoring power adds one marker without consuming the turn', () => {
-  const { state, holder: actor } = setupWithActiveHolder('cross_examiner', []);
-  assert.equal(state.activeSeat, actor);
+test('a before-scoring power resolves immediately before its matching Issue', () => {
+  const base = createGame({ seed: 'before-score-window' });
+  const actor = 'P1';
+  const drafted = draftSpecialties(base, {
+    P1: 'cross_examiner',
+    D1: 'trial_lawyer',
+    P2: 'generalist',
+    D2: 'team_builder',
+  });
+  const state = advanceToIssueWindow(drafted, 'witnesses');
   const before = state.issues.witnesses.firmMarkers[actor];
+  const resultsBefore = state.hearingResults.length;
 
   const used = applyOrThrow(state, { type: 'use_specialty', actor });
-  assert.equal(used.issues.witnesses.firmMarkers[actor], before + 1);
-  assert.equal(used.activeSeat, actor, 'the holder still owes a Case card');
+  assert.ok(used.hearingResults.length > resultsBefore, 'Witnesses scores after the decision');
+  const scored = used.hearingResults.findLast((result) => result.issueId === 'witnesses');
+  assert.ok(scored);
+  assert.equal(scored.personalStrength[actor], before + 1, 'the marker is included in scoring');
   assert.equal(used.players[actor].specialtyUsed, true);
   assert.equal(used.players[actor].specialtyRevealed, true, 'spending is public');
-
-  const again = applyAction(used, { type: 'use_specialty', actor });
-  assert.equal(again.ok, false);
-  assert.equal(again.error.code, 'specialty_unavailable');
 });
 
-test('a before-scoring power is only offered to the active firm', () => {
-  const { state } = setupWithActiveHolder('cross_examiner', [], 'idle-guard');
-  const idle = SEAT_ORDER.find((seat) => seat !== state.activeSeat);
+test('passing a scoring window keeps the hidden power for the later Hearing', () => {
+  const actor = 'P1';
+  let state = draftSpecialties(createGame({ seed: 'pass-for-later' }), {
+    P1: 'cross_examiner',
+    D1: 'trial_lawyer',
+    P2: 'generalist',
+    D2: 'team_builder',
+  });
+  state = advanceToIssueWindow(state, 'witnesses');
+  state = applyOrThrow(state, { type: 'pass_specialty', actor });
+  assert.equal(state.players[actor].specialtyUsed, false);
+  assert.equal(state.players[actor].specialtyRevealed, false);
+
+  state = advanceToIssueWindow(state, 'witnesses');
+  const before = state.issues.witnesses.firmMarkers[actor];
+  state = applyOrThrow(state, { type: 'use_specialty', actor });
+  assert.equal(state.issues.witnesses.firmMarkers[actor], before + 1);
+  assert.equal(state.players[actor].specialtyUsed, true);
+});
+
+test('a scoring power is offered only to the designated Specialty holder', () => {
+  const state = advanceToIssueWindow(draftSpecialties(createGame({ seed: 'window-guard' }), {
+    P1: 'cross_examiner',
+    D1: 'trial_lawyer',
+    P2: 'generalist',
+    D2: 'team_builder',
+  }), 'witnesses');
+  const holder = state.specialtyWindow.pendingSeats[0];
+  const idle = SEAT_ORDER.find((seat) => seat !== holder);
+  assert.deepEqual(getLegalActions(state, idle), []);
   const result = applyAction(state, { type: 'use_specialty', actor: idle });
   assert.equal(result.ok, false);
 });

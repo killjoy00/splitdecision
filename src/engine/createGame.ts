@@ -165,6 +165,8 @@ export function createGame(options: CreateGameOptions): GameState {
     actionsResolvedThisRound: 0,
     closingUndealt: closingDeck.slice(4),
     closingRevealed: [],
+    specialtyWindow: null,
+    pendingIssueScores: [],
     hearingResults: [],
     provisionalVerdict: null,
     specialtyBonuses: [],
@@ -182,6 +184,7 @@ export function createGame(options: CreateGameOptions): GameState {
     courtFavor,
     specialtiesEnabled: rules.specialtiesEnabled,
   });
-  revealNextDocket(state);
+  // Specialty selection is simultaneous and happens before anyone sees Round 1.
+  if (!rules.specialtiesEnabled) revealNextDocket(state);
   return state;
 }

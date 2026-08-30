@@ -36,14 +36,21 @@ Vite uses the local Worker automatically when the page itself is on `localhost` 
 npm test
 npm run build
 npm run build:remote
+npx playwright install chromium
+npm run test:e2e
 ```
 
-The remote integration suite runs inside Cloudflare's Workers Vitest runtime. It covers room creation, four-player joins, authorization, per-player redaction, bot difficulty configuration, human actions, bot turns, a complete verdict, and expiry alarms.
+The remote integration suite runs inside Cloudflare's Workers Vitest runtime. It covers room creation, simultaneous private actions, authorization, redaction, bot difficulty, recovery, rematches, a complete verdict, protocol health, and expiry alarms. The Playwright smoke test checks the local flow at a mobile viewport and verifies that full Case-card rules are visible during both splitting and choosing.
 
 ## Operations and recovery
 
-- Room tokens are generated in the browser session response and stored only in that browser's local storage. Invite links contain the room code, not a seat token.
+- Room tokens are generated in the browser session response and stored only in that browser's local storage. Normal invite links contain the room code, not a seat token.
+- Use **Copy private recovery link** to move or restore your own seat. That link contains the seat token in its URL fragment, so keep it private. The fragment is removed from the address bar as soon as the app restores it.
+- **Leave room** now releases the seat on the server. During a game, the departing firm becomes an Easy bot so the room cannot stall. If the host leaves, host control transfers to another connected human; a room with no humans closes.
+- Before play, the host can reopen a claimed non-host seat. During play, **Host seat recovery** can replace a disconnected non-host player with an Easy, Medium, or Hard bot.
+- After the verdict, the host can start a rematch with the same table.
 - The Worker permits browser requests from `https://splitdecision.planitnow.us` and local development origins. Update `FRONTEND_ORIGIN` in `wrangler.jsonc` if the production frontend moves.
 - Inactive room data expires after 30 days. There is no permanent account or match-history database in this version.
-- A player who clears site data loses that seat token. Create a new room for this initial release; seat recovery is intentionally not implemented yet.
-- To redeploy after a code change, merge the change to `main`, then run **Deploy remote play service** again. The workflow will stop if tests or the Worker dry-run fail.
+- Protocol v2 deliberately expires stored v1 rooms because their game-state shape is incompatible with corrected Specialty scoring windows. Players should create a new room after this upgrade.
+- Completed remote games emit one privacy-safe structured Worker log with aggregate per-seat Specialty offers, selection, use, bonus, and win outcome. It excludes player names, room codes, tokens, and seeds.
+- Merging to `main` deploys the Worker first, verifies `GET /api/health`, and only then deploys Pages. If the health check fails, the public frontend remains on the prior compatible version. The Worker-only workflow remains available for recovery.

@@ -14,6 +14,7 @@
     "test": "npm run test:engine && npm run test:remote",
     "test:engine": "npm run build:engine && node --test tests/*.test.mjs",
     "test:remote": "vitest run",
+    "test:e2e": "playwright test",
     "simulate": "npm run build:engine && node scripts/simulate.mjs",
     "analyze:gameplay": "npm run build:engine && node scripts/analyze-gameplay.mjs",
     "check": "npm test && npm run simulate -- --games 1000 --seed demo"
@@ -25,6 +26,7 @@
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.1.1",
     "@cloudflare/workers-types": "^5.20260827.1",
+    "@playwright/test": "^1.62.1",
     "@types/node": "^26.4.0",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
