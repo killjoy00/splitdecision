@@ -38,11 +38,14 @@ export function hashPublicGameState(state: GameState): string {
   if (!closingIsPublic) {
     for (const player of Object.values(clone.players)) {
       player.closingArgumentIssue = 'witnesses';
-      player.specialtyId = null;
-      player.specialtyOptions = [];
     }
     clone.closingUndealt = [];
   }
+  for (const player of Object.values(clone.players)) {
+    player.specialtyOptions = [];
+    if (!player.specialtyRevealed && clone.phase !== 'complete') player.specialtyId = null;
+  }
+  if (clone.specialtyWindow) clone.specialtyWindow.pendingSeats = [];
 
   if (clone.phase === 'round_split_commit') {
     clone.briefs.plaintiff.submittedSplit = null;

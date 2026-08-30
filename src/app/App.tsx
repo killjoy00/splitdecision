@@ -13,6 +13,7 @@ import {
   getLegalActions,
   getPendingActors,
   getPlayerView,
+  hashPublicGameState,
   type DocketCardState,
   type AutomatedBotLevel,
   type BotLevel,
@@ -32,6 +33,7 @@ import type {
   RemotePlayerSnapshot,
   RemoteSession,
 } from '../remote/protocol.js';
+import { REMOTE_PROTOCOL_VERSION } from '../remote/protocol.js';
 
 type Controller = BotLevel;
 
@@ -44,12 +46,14 @@ type SeatProfiles = Record<SeatId, SeatProfile>;
 type DisplayGame = GameState | PlayerView;
 
 interface SavedSession {
-  version: 1;
+  version: 2;
   game: GameState;
   profiles: SeatProfiles;
 }
 
-const STORAGE_KEY = 'split-decision/session-v1';
+type BotSpeed = 'step' | 'normal' | 'instant';
+
+const STORAGE_KEY = 'split-decision/session-v2';
 const REMOTE_SESSIONS_KEY = 'split-decision/remote-sessions-v1';
 const IS_LOCAL_BROWSER = window.location.hostname === 'localhost'
   || window.location.hostname === '127.0.0.1';
@@ -59,6 +63,20 @@ const REMOTE_API_URL = (
 ).replace(/\/$/, '');
 const CARD_BY_ID = new Map(GAME_DATA.caseCards.map((card) => [card.id, card]));
 const ISSUE_BY_ID = new Map(GAME_DATA.issues.map((issue) => [issue.id, issue]));
+
+function recoverySessionFromHash(): RemoteSession | null {
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const code = params.get('room')?.toUpperCase() ?? '';
+  const seat = params.get('seat');
+  const token = params.get('token') ?? '';
+  return /^[A-Z2-9]{6}$/.test(code)
+      && SEAT_ORDER.includes(seat as SeatId)
+      && token.length >= 20
+    ? { code, seat: seat as SeatId, token }
+    : null;
+}
+
+const URL_RECOVERY_SESSION = recoverySessionFromHash();
 
 const SIDE_LABEL: Record<SideId, string> = {
   plaintiff: 'Plaintiff',
@@ -90,7 +108,7 @@ function loadSession(): SavedSession | null {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as SavedSession;
-    if (parsed.version !== 1 || parsed.game.schemaVersion !== GAME_DATA.schemaVersion) return null;
+    if (parsed.version !== 2 || parsed.game.schemaVersion !== GAME_DATA.schemaVersion) return null;
     assertGameInvariants(parsed.game);
     return parsed;
   } catch {
@@ -110,7 +128,7 @@ function phaseName(game: DisplayGame): string {
   switch (game.phase) {
     case 'setup_specialty_choice':
       return 'Choose a Specialty';
-    case 'closing_power_window':
+    case 'specialty_power_window':
       return 'Specialty Window';
     case 'round_split_commit':
       return 'Divide the Docket';
@@ -129,8 +147,8 @@ function actorInstruction(game: DisplayGame): string {
   switch (game.phase) {
     case 'setup_specialty_choice':
       return 'You will secretly choose one of two Specialties for your firm.';
-    case 'closing_power_window':
-      return 'You may reposition Firm markers now that Closing Arguments are revealed.';
+    case 'specialty_power_window':
+      return 'One firm may have a private decision before the court continues.';
     case 'round_split_commit':
       return 'You will secretly divide the six Case cards into two briefs of three.';
     case 'round_choose_commit':
@@ -157,12 +175,17 @@ function describeTransition(previous: GameState, next: GameState, actor: SeatId)
 }
 
 export function App() {
-  const initialRoom = new URLSearchParams(window.location.search).get('room')?.toUpperCase() ?? '';
+  const initialRoom = new URLSearchParams(window.location.search).get('room')?.toUpperCase()
+    ?? URL_RECOVERY_SESSION?.code
+    ?? '';
   const [playMode, setPlayMode] = useState<'local' | 'remote'>(() => initialRoom ? 'remote' : 'local');
   const [restored] = useState<SavedSession | null>(() => loadSession());
   const [game, setGame] = useState<GameState | null>(() => restored?.game ?? null);
   const [profiles, setProfiles] = useState<SeatProfiles>(() => restored?.profiles ?? defaultProfiles());
   const [setupSeed, setSetupSeed] = useState(makeSeed);
+  const [specialtiesEnabled, setSpecialtiesEnabled] = useState(true);
+  const [botSpeed, setBotSpeed] = useState<BotSpeed>('normal');
+  const [botStepRequested, setBotStepRequested] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [selectedSlots, setSelectedSlots] = useState<Slot[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -186,7 +209,7 @@ export function App() {
 
   useEffect(() => {
     if (!game) return;
-    const session: SavedSession = { version: 1, game, profiles };
+    const session: SavedSession = { version: 2, game, profiles };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
   }, [game, profiles]);
 
@@ -197,8 +220,9 @@ export function App() {
 
   useEffect(() => {
     if (!game || !pendingActor || !isBotTurn || game.phase === 'complete') return;
+    if (botSpeed === 'step' && !botStepRequested) return;
     const timer = window.setTimeout(() => {
-      const random = createRandom(`${game.seed}:browser-bot:${game.actionHistory.length}`);
+      const random = createRandom(`browser-bot:${hashPublicGameState(game)}:${pendingActor}`);
       try {
         const level = game.players[pendingActor].controller as AutomatedBotLevel;
         const action = chooseBotAction(game, pendingActor, level, random);
@@ -210,23 +234,30 @@ export function App() {
         setTurnNotice(describeTransition(game, result.state, pendingActor));
         setGame(result.state);
         setUnlocked(false);
+        setBotStepRequested(false);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
-    }, 260);
+    }, botSpeed === 'instant' ? 0 : 500);
     return () => window.clearTimeout(timer);
-  }, [game, isBotTurn, pendingActor]);
+  }, [botSpeed, botStepRequested, game, isBotTurn, pendingActor]);
 
   function startGame() {
     const seed = setupSeed.trim() || makeSeed();
     const controllers = Object.fromEntries(
       SEAT_ORDER.map((seat) => [seat, profiles[seat].controller]),
     ) as Record<SeatId, Controller>;
-    const next = createGame({ seed, controllers });
+    const next = createGame({
+      seed,
+      controllers,
+      rules: { specialtiesEnabled },
+    });
     setGame(next);
     setUnlocked(false);
     setError(null);
-    setTurnNotice('The case is ready. Pass the device to the first Divider.');
+    setTurnNotice(specialtiesEnabled
+      ? 'The case is ready. Each firm chooses a private Specialty before Round 1 is revealed.'
+      : 'The case is ready. Pass the device to the first Divider.');
   }
 
   function updateProfile(seat: SeatId, update: Partial<SeatProfile>) {
@@ -282,6 +313,10 @@ export function App() {
         profiles={profiles}
         seed={setupSeed}
         onSeedChange={setSetupSeed}
+        specialtiesEnabled={specialtiesEnabled}
+        onSpecialtiesEnabledChange={setSpecialtiesEnabled}
+        botSpeed={botSpeed}
+        onBotSpeedChange={setBotSpeed}
         onProfileChange={updateProfile}
         onStart={startGame}
         onRemote={() => setPlayMode('remote')}
@@ -312,7 +347,14 @@ export function App() {
       {game.phase === 'complete' && game.verdict ? (
         <VerdictPanel game={game} profiles={profiles} onNewCase={returnToSetup} />
       ) : isBotTurn && pendingActor ? (
-        <BotTurnPanel actor={pendingActor} profiles={profiles} error={error} />
+        <BotTurnPanel
+          actor={pendingActor}
+          profiles={profiles}
+          error={error}
+          privateDecision={game.phase === 'specialty_power_window'}
+          stepMode={botSpeed === 'step'}
+          onStep={() => setBotStepRequested(true)}
+        />
       ) : !unlocked && pendingActor ? (
         <HandoffPanel
           actor={pendingActor}
@@ -339,7 +381,11 @@ export function App() {
         />
       ) : null}
 
-      <Scoreboard game={game} profiles={profiles} activeSeat={pendingActor} />
+      <Scoreboard
+        game={game}
+        profiles={profiles}
+        activeSeat={game.phase === 'specialty_power_window' ? null : pendingActor}
+      />
       <IssueBoard game={game} profiles={profiles} />
       <DocketBoard game={game} profiles={profiles} />
       <RecentResults results={game.hearingResults} profiles={profiles} />
@@ -352,6 +398,10 @@ function SetupScreen({
   profiles,
   seed,
   onSeedChange,
+  specialtiesEnabled,
+  onSpecialtiesEnabledChange,
+  botSpeed,
+  onBotSpeedChange,
   onProfileChange,
   onStart,
   onRemote,
@@ -359,6 +409,10 @@ function SetupScreen({
   profiles: SeatProfiles;
   seed: string;
   onSeedChange: (seed: string) => void;
+  specialtiesEnabled: boolean;
+  onSpecialtiesEnabledChange: (enabled: boolean) => void;
+  botSpeed: BotSpeed;
+  onBotSpeedChange: (speed: BotSpeed) => void;
   onProfileChange: (seat: SeatId, update: Partial<SeatProfile>) => void;
   onStart: () => void;
   onRemote: () => void;
@@ -402,7 +456,32 @@ function SetupScreen({
       <form className="setup-card" onSubmit={(event) => { event.preventDefault(); onStart(); }}>
         <div className="setup-heading">
           <div><p className="section-label">Seat the firms</p><h2>Open a new case</h2></div>
-          <label className="seed-field">Case seed<input value={seed} onChange={(event) => onSeedChange(event.target.value)} /></label>
+          <div className="seed-controls">
+            <label className="seed-field">Case seed<input value={seed} onChange={(event) => onSeedChange(event.target.value)} /></label>
+            <button className="button button-quiet" type="button" onClick={() => {
+              const randomized = makeSeed();
+              onSeedChange(randomized === seed ? `${randomized}-new` : randomized);
+            }}>Randomize seed</button>
+          </div>
+        </div>
+
+        <div className="game-options-grid">
+          <label className="setup-option">
+            <input
+              type="checkbox"
+              checked={specialtiesEnabled}
+              onChange={(event) => onSpecialtiesEnabledChange(event.target.checked)}
+            />
+            <span><strong>Use Specialties</strong><small>Deal two private roles to each firm and choose one.</small></span>
+          </label>
+          <label className="bot-speed-field">
+            Bot pace
+            <select value={botSpeed} onChange={(event) => onBotSpeedChange(event.target.value as BotSpeed)}>
+              <option value="step">Step — tap for each move</option>
+              <option value="normal">Normal — readable pause</option>
+              <option value="instant">Instant — no delay</option>
+            </select>
+          </label>
         </div>
 
         <div className="seat-setup-grid">
@@ -447,27 +526,39 @@ function HandoffPanel({ actor, game, profiles, notice, onUnlock }: {
   notice: string | null;
   onUnlock: () => void;
 }) {
+  const specialtyCheck = game.phase === 'specialty_power_window';
   return (
     <section className="handoff-panel" aria-labelledby="handoff-title">
       {notice && <p className="turn-notice" role="status">{notice}</p>}
-      <div className={`handoff-seal side-${SEAT_META[actor].side}`}>{actor}</div>
+      <div className={`handoff-seal ${specialtyCheck ? '' : `side-${SEAT_META[actor].side}`}`}>{specialtyCheck ? '?' : actor}</div>
       <p className="section-label">Private turn</p>
-      <h2 id="handoff-title">Pass the device to {seatName(profiles, actor)}</h2>
+      <h2 id="handoff-title">{specialtyCheck ? 'A private Specialty check is ready' : `Pass the device to ${seatName(profiles, actor)}`}</h2>
       <p>{actorInstruction(game)}</p>
-      <button className="button button-primary button-large" type="button" onClick={onUnlock}>I am {seatName(profiles, actor)}</button>
+      <button className="button button-primary button-large" type="button" onClick={onUnlock}>{specialtyCheck ? 'Reveal the firm privately' : `I am ${seatName(profiles, actor)}`}</button>
       <small>Other players should look away before continuing.</small>
     </section>
   );
 }
 
-function BotTurnPanel({ actor, profiles, error }: { actor: SeatId; profiles: SeatProfiles; error: string | null }) {
+function BotTurnPanel({ actor, profiles, error, privateDecision, stepMode, onStep }: {
+  actor: SeatId;
+  profiles: SeatProfiles;
+  error: string | null;
+  privateDecision: boolean;
+  stepMode: boolean;
+  onStep: () => void;
+}) {
   return (
     <section className="handoff-panel bot-panel" aria-live="polite">
-      <div className={`handoff-seal side-${SEAT_META[actor].side}`}>AI</div>
+      <div className={`handoff-seal ${privateDecision ? '' : `side-${SEAT_META[actor].side}`}`}>AI</div>
       <p className="section-label">{profiles[actor].controller} bot</p>
-      <h2>{seatName(profiles, actor)} is reviewing the Docket</h2>
-      <p>{error ?? 'Selecting one legal action…'}</p>
-      <div className="thinking-dots" aria-hidden="true"><span /><span /><span /></div>
+      <h2>{privateDecision ? 'A bot is resolving a private Specialty check' : `${seatName(profiles, actor)} is reviewing the Docket`}</h2>
+      <p>{error ?? (stepMode ? 'Ready to select one legal action.' : 'Selecting one legal action…')}</p>
+      {stepMode ? (
+        <button className="button button-primary" type="button" onClick={onStep}>Run bot move</button>
+      ) : (
+        <div className="thinking-dots" aria-hidden="true"><span /><span /><span /></div>
+      )}
     </section>
   );
 }
@@ -504,8 +595,8 @@ function TurnPanel({ actor, game, profiles, playerView, legalActions, selectedSl
       {game.phase === 'setup_specialty_choice' && (
         <SpecialtyDraftControls actor={actor} legalActions={legalActions} onSubmit={onSubmit} />
       )}
-      {game.phase === 'closing_power_window' && (
-        <ClosingPowerControls actor={actor} game={game} legalActions={legalActions} onSubmit={onSubmit} />
+      {game.phase === 'specialty_power_window' && (
+        <SpecialtyPowerControls actor={actor} game={game} legalActions={legalActions} onSubmit={onSubmit} />
       )}
       {game.phase === 'round_split_commit' && (
         <SplitControls actor={actor} game={game} selectedSlots={selectedSlots} onSelectedSlotsChange={onSelectedSlotsChange} onSubmit={onSubmit} />
@@ -634,7 +725,7 @@ function SpecialtyDraftControls({ actor, legalActions, onSubmit }: {
   );
 }
 
-function ClosingPowerControls({ actor, game, legalActions, onSubmit }: {
+function SpecialtyPowerControls({ actor, game, legalActions, onSubmit }: {
   actor: SeatId;
   game: DisplayGame;
   legalActions: GameAction[];
@@ -645,6 +736,24 @@ function ClosingPowerControls({ actor, game, legalActions, onSubmit }: {
       action.type === 'use_specialty',
   );
   const pass = legalActions.find((action) => action.type === 'pass_specialty');
+  const beforeScore = game.specialtyWindow?.kind === 'before_issue_scores';
+  const pendingIssue = game.specialtyWindow?.issueId ?? null;
+  if (beforeScore) {
+    const usePower = moves[0];
+    return (
+      <div className="decision-area">
+        <div className="decision-copy">
+          <p className="section-label">Before the court scores</p>
+          <h3>{pendingIssue ? issueName(pendingIssue) : 'This Issue'} is about to score</h3>
+          <p>Add your Specialty marker now, or pass and keep the power for a later scoring of this Issue.</p>
+        </div>
+        <div className="decision-footer">
+          {pass && <button className="button button-quiet" type="button" onClick={() => onSubmit(pass)}>Pass for now</button>}
+          {usePower && <button className="button button-specialty" type="button" onClick={() => onSubmit(usePower)}>Use my Specialty</button>}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="decision-area">
       <div className="decision-copy">
@@ -688,25 +797,9 @@ function ArgumentControls({ actor, game, legalActions, onSubmit }: {
   const cardActions = legalActions.filter(
     (action): action is Extract<GameAction, { type: 'play_docket_card' }> => action.type === 'play_docket_card',
   );
-  const standalonePower = legalActions.find(
-    (action): action is Extract<GameAction, { type: 'use_specialty' }> =>
-      action.type === 'use_specialty',
-  );
-  const specialty = game.players[actor].specialtyId
-    ? SPECIALTY_BY_ID.get(game.players[actor].specialtyId as string)
-    : undefined;
   return (
     <div className="decision-area">
       <div className="decision-copy"><p className="section-label">Argument {game.actionsResolvedThisRound + 1} of 12</p><h3>Play one Case card</h3><p>Pick an assigned card, then choose its eligible Issue or Lead/Co-Counsel action.</p></div>
-      {standalonePower && specialty && (
-        <button
-          className="button button-specialty"
-          type="button"
-          onClick={() => onSubmit(standalonePower)}
-        >
-          Spend {specialty.name}: {specialty.power}
-        </button>
-      )}
       <div className="argument-grid">
         {assignedSlots.map((slot) => {
           const docket = game.docket.find((entry) => entry.slot === slot);
@@ -751,6 +844,7 @@ function DocketChoiceCard({ docket, selected, onClick }: { docket: DocketCardSta
       <span className="slot-number">{docket.slot}</span>
       <strong>{card?.title}</strong>
       <small>{card?.issues.map(issueName).join(' / ')}</small>
+      <p className="docket-choice-rules">{card?.rulesText}</p>
       <span className={`card-action card-action-${card?.action}`}>{card?.action === 'choose' ? 'Choose action' : card?.action.replace('_', '-')}</span>
       <span className="selection-mark">{selected ? 'Selected' : 'Select'}</span>
     </button>
@@ -767,7 +861,12 @@ function BriefCardList({ slots, docket }: { slots: readonly Slot[]; docket: Dock
       {slots.map((slot) => {
         const docketCard = docket.find((entry) => entry.slot === slot);
         const card = docketCard ? CARD_BY_ID.get(docketCard.cardId) : null;
-        return <li key={slot}><span>{slot}</span><strong>{card?.title ?? `Card ${slot}`}</strong></li>;
+        return (
+          <li key={slot}>
+            <span>{slot}</span>
+            <div><strong>{card?.title ?? `Card ${slot}`}</strong><small>{card?.rulesText}</small></div>
+          </li>
+        );
       })}
     </ul>
   );
@@ -784,13 +883,23 @@ function Scoreboard({ game, profiles, activeSeat }: { game: DisplayGame; profile
             <article className={`side-score side-${side}`} key={side}>
               <div className="side-score-heading"><strong>{SIDE_LABEL[side]}</strong><span>First Chair: {game.firstChairBySide[side]}</span></div>
               <div className="firm-score-grid">
-                {seats.map((seat) => (
+                {seats.map((seat) => {
+                  const specialtyId = game.players[seat].specialtyRevealed
+                    ? game.players[seat].specialtyId
+                    : null;
+                  const specialty = specialtyId ? SPECIALTY_BY_ID.get(specialtyId) : null;
+                  return (
                   <div className={`firm-score ${activeSeat === seat ? 'firm-score-active' : ''}`} key={seat}>
                     <span className={`seat-chip seat-${seat.toLowerCase()}`}>{seat}</span>
-                    <div><strong>{seatName(profiles, seat)}</strong><small>{game.players[seat].leadCredits.length} Lead Credits</small></div>
+                    <div>
+                      <strong>{seatName(profiles, seat)}</strong>
+                      <small>{game.players[seat].leadCredits.length} Lead Credits</small>
+                      {specialty && <small className="revealed-specialty">Revealed: {specialty.name} · {specialty.power}</small>}
+                    </div>
                     <b>{game.players[seat].reputation}</b>
                   </div>
-                ))}
+                  );
+                })}
               </div>
               <div className="side-floor">Side floor <strong>{Math.min(...seats.map((seat) => game.players[seat].reputation))}</strong></div>
             </article>
@@ -881,7 +990,13 @@ function RecentResults({ results, profiles }: { results: HearingResult[]; profil
   );
 }
 
-function VerdictPanel({ game, profiles, onNewCase }: { game: DisplayGame; profiles: SeatProfiles; onNewCase: () => void }) {
+function VerdictPanel({ game, profiles, onNewCase, actionLabel = 'Open another case', actionDisabled = false }: {
+  game: DisplayGame;
+  profiles: SeatProfiles;
+  onNewCase: () => void;
+  actionLabel?: string;
+  actionDisabled?: boolean;
+}) {
   const verdict = game.verdict;
   if (!verdict) return null;
   return (
@@ -910,7 +1025,7 @@ function VerdictPanel({ game, profiles, onNewCase }: { game: DisplayGame; profil
         </div>
       )}
       <p className="verdict-detail">Side tiebreak: {verdict.sideTieBreaker.replaceAll('_', ' ')} · Firm tiebreak: {verdict.firmTieBreaker.replaceAll('_', ' ')}</p>
-      <button className="button button-primary button-large" type="button" onClick={onNewCase}>Open another case</button>
+      <button className="button button-primary button-large" type="button" disabled={actionDisabled} onClick={onNewCase}>{actionLabel}</button>
     </section>
   );
 }
@@ -970,7 +1085,27 @@ async function remoteRequest<T>(
       signal: controller.signal,
     });
     const result = await response.json() as RemoteApiResult<T>;
-    if (result && typeof result === 'object' && 'ok' in result) return result;
+    if (result && typeof result === 'object' && 'ok' in result) {
+      if (result.ok) {
+        const value = result.value as unknown;
+        const record = value && typeof value === 'object' && !Array.isArray(value)
+          ? value as Record<string, unknown>
+          : null;
+        const snapshot = record?.snapshot && typeof record.snapshot === 'object'
+          ? record.snapshot as Record<string, unknown>
+          : null;
+        const version = record?.protocolVersion ?? snapshot?.protocolVersion;
+        if (version !== REMOTE_PROTOCOL_VERSION) {
+          return {
+            ok: false,
+            status: 503,
+            code: 'protocol_mismatch',
+            error: 'Remote play is still updating. Wait for the Worker deployment to finish, then refresh.',
+          };
+        }
+      }
+      return result;
+    }
     return {
       ok: false,
       status: response.status,
@@ -1002,13 +1137,21 @@ function RemoteExperience({ initialCode, onLocalPlay }: {
 }) {
   const normalizedInitialCode = /^[A-Z2-9]{6}$/.test(initialCode) ? initialCode : '';
   const [session, setSession] = useState<RemoteSession | null>(
-    () => remoteSessionFor(normalizedInitialCode),
+    () => {
+      if (URL_RECOVERY_SESSION?.code === normalizedInitialCode) {
+        saveRemoteSession(URL_RECOVERY_SESSION);
+        window.history.replaceState({}, '', `${window.location.pathname}?room=${normalizedInitialCode}`);
+        return URL_RECOVERY_SESSION;
+      }
+      return remoteSessionFor(normalizedInitialCode);
+    },
   );
   const [snapshot, setSnapshot] = useState<RemotePlayerSnapshot | null>(null);
   const [targetLobby, setTargetLobby] = useState<RemoteLobby | null>(null);
   const [name, setName] = useState('');
   const [roomCode, setRoomCode] = useState(normalizedInitialCode);
   const [seed, setSeed] = useState(makeSeed);
+  const [specialtiesEnabled, setSpecialtiesEnabled] = useState(true);
   const [selectedSlots, setSelectedSlots] = useState<Slot[]>([]);
   const [turnHidden, setTurnHidden] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -1055,7 +1198,7 @@ function RemoteExperience({ initialCode, onLocalPlay }: {
   useEffect(() => {
     setSelectedSlots([]);
     setTurnHidden(false);
-  }, [snapshot?.pendingActor, snapshot?.game?.phase, snapshot?.game?.round]);
+  }, [snapshot?.pendingActors.join(','), snapshot?.game?.phase, snapshot?.game?.round]);
 
   function acceptSession(nextSession: RemoteSession, nextSnapshot: RemotePlayerSnapshot) {
     saveRemoteSession(nextSession);
@@ -1149,7 +1292,11 @@ function RemoteExperience({ initialCode, onLocalPlay }: {
     setError(null);
     const result = await remoteRequest<RemotePlayerSnapshot>(
       `/api/rooms/${session.code}/start`,
-      { method: 'POST', token: session.token, body: { seed } },
+      {
+        method: 'POST',
+        token: session.token,
+        body: { seed, specialtiesEnabled },
+      },
     );
     setBusy(false);
     if (result.ok) {
@@ -1189,8 +1336,57 @@ function RemoteExperience({ initialCode, onLocalPlay }: {
     }
   }
 
-  function leaveRoom() {
-    if (session) forgetRemoteSession(session.code);
+  async function copyRecoveryLink() {
+    if (!session) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('room', session.code);
+    url.hash = new URLSearchParams({
+      room: session.code,
+      seat: session.seat,
+      token: session.token,
+    }).toString();
+    try {
+      await navigator.clipboard.writeText(url.toString());
+      setNotice('Private recovery link copied. Keep it secret—it controls your seat.');
+    } catch {
+      setError('Could not copy the recovery link on this device.');
+    }
+  }
+
+  async function releaseSeat(seat: SeatId, controller: Controller) {
+    if (!session) return;
+    setBusy(true);
+    const result = await remoteRequest<RemotePlayerSnapshot>(
+      `/api/rooms/${session.code}/release`,
+      { method: 'POST', token: session.token, body: { seat, controller } },
+    );
+    setBusy(false);
+    if (result.ok) setSnapshot(result.value);
+    else setError(result.error);
+  }
+
+  async function leaveRoom() {
+    if (session) {
+      if (snapshot?.game?.phase !== undefined
+          && snapshot.game.phase !== 'complete'
+          && !window.confirm('Leave this live game? An Easy bot will take over your firm and this recovery link will stop working.')) {
+        return;
+      }
+      setBusy(true);
+      const result = await remoteRequest<{
+        protocolVersion: typeof REMOTE_PROTOCOL_VERSION;
+        closed: boolean;
+      }>(`/api/rooms/${session.code}/leave`, {
+        method: 'POST',
+        token: session.token,
+      });
+      setBusy(false);
+      if (!result.ok && result.code !== 'room_not_found' && result.code !== 'invalid_session') {
+        setError(`Could not release your seat: ${result.error}`);
+        return;
+      }
+      forgetRemoteSession(session.code);
+    }
     setRoomUrl(null);
     setSession(null);
     setSnapshot(null);
@@ -1232,21 +1428,27 @@ function RemoteExperience({ initialCode, onLocalPlay }: {
         session={session}
         isHost={isHost}
         seed={seed}
+        specialtiesEnabled={specialtiesEnabled}
         busy={busy}
         error={error}
         notice={notice}
         onSeedChange={setSeed}
+        onSpecialtiesEnabledChange={setSpecialtiesEnabled}
         onCopyInvite={() => { void copyInvite(lobby.code); }}
+        onCopyRecovery={() => { void copyRecoveryLink(); }}
         onConfigureBot={(seat, controller) => { void configureBot(seat, controller); }}
+        onReleaseSeat={(seat, controller) => { void releaseSeat(seat, controller); }}
         onStart={() => { void startRemoteGame(); }}
-        onLeave={leaveRoom}
+        onLeave={() => { void leaveRoom(); }}
       />
     );
   }
 
   const game = snapshot.game;
-  const actor = snapshot.pendingActor;
-  const myTurn = actor === session.seat;
+  const actor = snapshot.pendingActors.includes(session.seat)
+    ? session.seat
+    : snapshot.pendingActor;
+  const myTurn = snapshot.pendingActors.includes(session.seat);
   const actorName = actor ? seatName(profiles, actor) : null;
   return (
     <main className="game-shell">
@@ -1255,7 +1457,8 @@ function RemoteExperience({ initialCode, onLocalPlay }: {
         <div className="header-actions">
           <span className="save-status">Live · You are {session.seat}</span>
           <button className="button button-quiet" type="button" onClick={() => { void copyInvite(lobby.code); }}>Invite</button>
-          <button className="button button-quiet" type="button" onClick={leaveRoom}>Leave</button>
+          <button className="button button-quiet" type="button" onClick={() => { void copyRecoveryLink(); }}>Recovery link</button>
+          <button className="button button-quiet" type="button" onClick={() => { void leaveRoom(); }}>Leave</button>
         </div>
       </header>
 
@@ -1270,7 +1473,15 @@ function RemoteExperience({ initialCode, onLocalPlay }: {
       {error && <p className="error-banner remote-error" role="alert">{error}</p>}
 
       {game.phase === 'complete' && game.verdict ? (
-        <VerdictPanel game={game} profiles={profiles} onNewCase={leaveRoom} />
+        <VerdictPanel
+          game={game}
+          profiles={profiles}
+          onNewCase={() => {
+            if (isHost) void startRemoteGame();
+          }}
+          actionLabel={isHost ? 'Start rematch' : 'Waiting for host'}
+          actionDisabled={!isHost || busy}
+        />
       ) : myTurn && actor && !turnHidden ? (
         <TurnPanel
           actor={actor}
@@ -1299,6 +1510,14 @@ function RemoteExperience({ initialCode, onLocalPlay }: {
           <p>The board refreshes automatically. You can leave this tab open.</p>
           <div className="thinking-dots" aria-hidden="true"><span /><span /><span /></div>
         </section>
+      )}
+
+      {isHost && game.phase !== 'complete' && (
+        <RemoteSeatManager
+          lobby={lobby}
+          busy={busy}
+          onReplace={(seat, controller) => { void releaseSeat(seat, controller); }}
+        />
       )}
 
       <Scoreboard game={game} profiles={profiles} activeSeat={actor} />
@@ -1393,12 +1612,16 @@ function RemoteLobbyPanel({
   session,
   isHost,
   seed,
+  specialtiesEnabled,
   busy,
   error,
   notice,
   onSeedChange,
+  onSpecialtiesEnabledChange,
   onCopyInvite,
+  onCopyRecovery,
   onConfigureBot,
+  onReleaseSeat,
   onStart,
   onLeave,
 }: {
@@ -1406,12 +1629,16 @@ function RemoteLobbyPanel({
   session: RemoteSession;
   isHost: boolean;
   seed: string;
+  specialtiesEnabled: boolean;
   busy: boolean;
   error: string | null;
   notice: string | null;
   onSeedChange: (value: string) => void;
+  onSpecialtiesEnabledChange: (enabled: boolean) => void;
   onCopyInvite: () => void;
+  onCopyRecovery: () => void;
   onConfigureBot: (seat: SeatId, controller: Controller) => void;
+  onReleaseSeat: (seat: SeatId, controller: Controller) => void;
   onStart: () => void;
   onLeave: () => void;
 }) {
@@ -1422,6 +1649,7 @@ function RemoteLobbyPanel({
         <div><p className="eyebrow">Remote courtroom</p><h1>{lobby.code}</h1><p>Share this code or copy the invite link. You are seated as {session.seat}.</p></div>
         <div className="remote-lobby-actions">
           <button className="button button-primary" type="button" onClick={onCopyInvite}>Copy invite link</button>
+          <button className="button button-quiet" type="button" onClick={onCopyRecovery}>Copy private recovery link</button>
           <button className="button button-quiet" type="button" onClick={onLeave}>Leave room</button>
         </div>
       </section>
@@ -1451,12 +1679,37 @@ function RemoteLobbyPanel({
                   </select>
                 </label>
               )}
+              {isHost && seat.seat !== lobby.hostSeat
+                  && seat.claimed && seat.controller === 'human' && (
+                <button
+                  className="button button-quiet"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    if (window.confirm(`Reopen ${seat.seat}? Their current recovery link will stop working.`)) {
+                      onReleaseSeat(seat.seat, 'human');
+                    }
+                  }}
+                >
+                  Reopen seat
+                </button>
+              )}
             </article>
           ))}
         </div>
         {isHost ? (
           <div className="remote-start-row">
-            <label>Case seed<input value={seed} onChange={(event) => onSeedChange(event.target.value)} /></label>
+            <div className="remote-case-options">
+              <label>Case seed<input value={seed} onChange={(event) => onSeedChange(event.target.value)} /></label>
+              <button className="button button-quiet" type="button" onClick={() => {
+                const randomized = makeSeed();
+                onSeedChange(randomized === seed ? `${randomized}-new` : randomized);
+              }}>Randomize seed</button>
+              <label className="setup-option">
+                <input type="checkbox" checked={specialtiesEnabled} onChange={(event) => onSpecialtiesEnabledChange(event.target.checked)} />
+                <span><strong>Use Specialties</strong><small>Draft private roles before Round 1.</small></span>
+              </label>
+            </div>
             <div><span>{allSeatsReady ? 'All four firms are ready.' : 'Fill every seat with a player or bot.'}</span><button className="button button-primary button-large" type="button" disabled={busy || !allSeatsReady} onClick={onStart}>Call the case</button></div>
           </div>
         ) : (
@@ -1464,6 +1717,44 @@ function RemoteLobbyPanel({
         )}
       </section>
     </main>
+  );
+}
+
+function RemoteSeatManager({ lobby, busy, onReplace }: {
+  lobby: RemoteLobby;
+  busy: boolean;
+  onReplace: (seat: SeatId, controller: Exclude<Controller, 'human'>) => void;
+}) {
+  const replaceable = lobby.seats.filter(
+    (seat) => seat.seat !== lobby.hostSeat && seat.controller === 'human',
+  );
+  if (replaceable.length === 0) return null;
+  return (
+    <details className="rules-guide remote-seat-manager">
+      <summary>Host seat recovery</summary>
+      <div className="remote-recovery-list">
+        {replaceable.map((seat) => (
+          <div key={seat.seat}>
+            <span>{seat.seat} · {seat.name}</span>
+            <div>
+              {(['easy', 'medium', 'hard'] as const).map((controller) => (
+                <button
+                  className="button button-quiet"
+                  type="button"
+                  disabled={busy}
+                  key={controller}
+                  onClick={() => {
+                    if (window.confirm(`Replace ${seat.name} with a ${controller} bot? Their recovery link will stop working.`)) {
+                      onReplace(seat.seat, controller);
+                    }
+                  }}
+                >Replace with {controller}</button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -1477,7 +1768,8 @@ function RulesGuide() {
         <div><span>3</span><strong>Argue</strong><p>Lead adds 3 own markers. Co-Counsel adds 2 own, 1 partner, and 1 Joint Work.</p></div>
         <div><span>4</span><strong>Score</strong><p>Two scheduled Issues score each round. Lead earns 3 and a participating ally earns 2.</p></div>
         <div><span>5</span><strong>Close</strong><p>Four secret Closing Argument Issues score again after Round 6 for 2/1.</p></div>
-        <div><span>6</span><strong>Verdict</strong><p>Compare each side’s lower firm score. The higher floor wins; its higher firm wins the game.</p></div>
+        <div><span>6</span><strong>Specialize</strong><p>Your private Specialty has one power and one endgame bonus. Reveal it only when used or when the case ends.</p></div>
+        <div><span>7</span><strong>Verdict</strong><p>Compare each side’s lower firm score. The higher floor wins; its higher firm wins the game.</p></div>
       </div>
     </details>
   );

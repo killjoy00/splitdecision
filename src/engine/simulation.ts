@@ -5,6 +5,7 @@ import { getPendingActors } from './legalActions.js';
 import { createRandom } from './random.js';
 import { applyAction } from './reducer.js';
 import { SIDE_BY_SEAT } from './selectors.js';
+import { hashPublicGameState } from './stateHash.js';
 import {
   SEAT_ORDER,
   type GameState,
@@ -14,6 +15,16 @@ import {
 } from './types.js';
 
 export type BotControllers = Record<SeatId, AutomatedBotLevel>;
+
+export interface SpecialtyTelemetry {
+  offered: number;
+  selected: number;
+  used: number;
+  bonusEarned: number;
+  wins: number;
+}
+
+export type SpecialtyTelemetryById = Record<string, SpecialtyTelemetry>;
 
 export interface BotGameSummary {
   seed: string;
@@ -38,6 +49,7 @@ export interface BotGameSummary {
   highestScoreEliminated: boolean;
   closingChangedSide: boolean;
   closingChangedFirm: boolean;
+  specialtyMetrics: SpecialtyTelemetryById;
 }
 
 export type RandomGameSummary = BotGameSummary;
@@ -66,6 +78,7 @@ export interface SimulationSummary extends GameplayMetrics {
   controllers: BotControllers;
   firmWins: Record<SeatId, number>;
   sideWins: Record<SideId, number>;
+  specialtyMetrics: SpecialtyTelemetryById;
 }
 
 export interface MatchupSummary extends GameplayMetrics {
@@ -78,6 +91,7 @@ export interface MatchupSummary extends GameplayMetrics {
   challengerWinRate: number;
   challengerPlaintiffGames: number;
   challengerDefenseGames: number;
+  specialtyMetrics: SpecialtyTelemetryById;
 }
 
 interface AggregateCounters {
@@ -98,6 +112,14 @@ interface AggregateCounters {
   highestScoreEliminated: number;
   closingChangedSide: number;
   closingChangedFirm: number;
+  specialtyMetrics: SpecialtyTelemetryById;
+}
+
+function emptySpecialtyMetrics(): SpecialtyTelemetryById {
+  return Object.fromEntries(GAME_DATA.specialties.map((specialty) => [
+    specialty.id,
+    { offered: 0, selected: 0, used: 0, bonusEarned: 0, wins: 0 },
+  ]));
 }
 
 function emptyCounters(): AggregateCounters {
@@ -119,6 +141,7 @@ function emptyCounters(): AggregateCounters {
     highestScoreEliminated: 0,
     closingChangedSide: 0,
     closingChangedFirm: 0,
+    specialtyMetrics: emptySpecialtyMetrics(),
   };
 }
 
@@ -140,6 +163,15 @@ function addGame(counters: AggregateCounters, game: BotGameSummary): void {
   if (game.highestScoreEliminated) counters.highestScoreEliminated += 1;
   if (game.closingChangedSide) counters.closingChangedSide += 1;
   if (game.closingChangedFirm) counters.closingChangedFirm += 1;
+  for (const [specialtyId, values] of Object.entries(game.specialtyMetrics)) {
+    const target = counters.specialtyMetrics[specialtyId];
+    if (!target) continue;
+    target.offered += values.offered;
+    target.selected += values.selected;
+    target.used += values.used;
+    target.bonusEarned += values.bonusEarned;
+    target.wins += values.wins;
+  }
 }
 
 function rate(numerator: number, denominator: number): number {
@@ -179,7 +211,6 @@ function assertAutomatedControllers(controllers: BotControllers): void {
 export function runBotGame(seed: string, controllers: BotControllers): BotGameSummary {
   assertAutomatedControllers(controllers);
   let state = createGame({ seed, controllers, recordTelemetry: false });
-  const botRandom = createRandom(`${seed}:bots`);
   let guard = 0;
   let actionCount = 0;
   let leadActions = 0;
@@ -196,7 +227,12 @@ export function runBotGame(seed: string, controllers: BotControllers): BotGameSu
     if (actors.length === 0) throw new Error(`No pending actors in phase ${state.phase}`);
     const actor = actors[0] as SeatId;
     const level = controllers[actor];
-    const action = chooseBotAction(state, actor, level, botRandom);
+    const action = chooseBotAction(
+      state,
+      actor,
+      level,
+      createRandom(`simulation-bot:${hashPublicGameState(state)}:${actor}`),
+    );
     actionCount += 1;
     if (action.type === 'play_docket_card') {
       const docketCard = state.docket.find((entry) => entry.slot === action.slot);
@@ -245,6 +281,23 @@ export function runBotGame(seed: string, controllers: BotControllers): BotGameSu
     (result) => Math.abs(result.sideStrength.plaintiff - result.sideStrength.defense),
   );
   const provisional = state.provisionalVerdict ?? state.verdict;
+  const specialtyMetrics = emptySpecialtyMetrics();
+  for (const seat of SEAT_ORDER) {
+    for (const specialtyId of state.players[seat].specialtyOptions) {
+      const metric = specialtyMetrics[specialtyId];
+      if (metric) metric.offered += 1;
+    }
+    const specialtyId = state.players[seat].specialtyId;
+    if (!specialtyId) continue;
+    const metric = specialtyMetrics[specialtyId];
+    if (!metric) continue;
+    metric.selected += 1;
+    if (state.players[seat].specialtyUsed) metric.used += 1;
+    if (state.specialtyBonuses.some((bonus) => bonus.seatId === seat && bonus.earned)) {
+      metric.bonusEarned += 1;
+    }
+    if (state.verdict.winningFirm === seat) metric.wins += 1;
+  }
 
   return {
     seed,
@@ -269,6 +322,7 @@ export function runBotGame(seed: string, controllers: BotControllers): BotGameSu
     highestScoreEliminated,
     closingChangedSide: provisional.winningSide !== state.verdict.winningSide,
     closingChangedFirm: provisional.winningFirm !== state.verdict.winningFirm,
+    specialtyMetrics,
   };
 }
 
@@ -300,6 +354,7 @@ export function simulateBotGames(
     controllers,
     firmWins,
     sideWins,
+    specialtyMetrics: counters.specialtyMetrics,
     ...metrics(counters, games),
   };
 }
@@ -347,6 +402,7 @@ export function simulateMatchup(
     challengerWinRate: challengerWins / games,
     challengerPlaintiffGames,
     challengerDefenseGames,
+    specialtyMetrics: counters.specialtyMetrics,
     ...metrics(counters, games),
   };
 }

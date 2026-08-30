@@ -16,7 +16,17 @@ export type PlayerView = Omit<GameState, 'players' | 'seed'> & {
   players: Record<SeatId, VisiblePlayerState>;
 };
 
-function redactEvent(event: GameEvent): GameEvent {
+const PRIVATE_EVENT_TYPES = new Set([
+  'specialty_chosen',
+  'split_committed',
+  'brief_choice_committed',
+  'specialty_passed',
+  'specialty_declined',
+  'specialty_window_opened',
+]);
+
+function redactEvent(event: GameEvent): GameEvent | null {
+  if (PRIVATE_EVENT_TYPES.has(event.type)) return null;
   if (event.type !== 'setup_complete'
       || event.payload === null
       || typeof event.payload !== 'object'
@@ -34,7 +44,9 @@ export function getPlayerView(state: GameState, viewer: SeatId): PlayerView {
   view.seed = null;
   view.caseDeck = view.caseDeck.slice(0, view.caseDeckIndex);
   view.actionHistory = [];
-  view.eventLog = view.eventLog.map(redactEvent);
+  view.eventLog = view.eventLog
+    .map(redactEvent)
+    .filter((event): event is GameEvent => event !== null);
   if (!closingIsPublic) view.closingUndealt = [];
 
   for (const [seat, player] of Object.entries(view.players) as Array<[SeatId, VisiblePlayerState]>) {
@@ -60,6 +72,15 @@ export function getPlayerView(state: GameState, viewer: SeatId): PlayerView {
     // Hide who has already locked a Specialty so the choice stays simultaneous.
     for (const seat of Object.keys(view.players) as SeatId[]) {
       if (seat !== viewer) view.players[seat].specialtyId = null;
+    }
+  }
+
+  if (state.phase === 'specialty_power_window') {
+    if (state.specialtyWindow?.pendingSeats[0] === viewer && view.specialtyWindow) {
+      view.specialtyWindow.pendingSeats = [viewer];
+    } else {
+      // Eligibility can identify a hidden Specialty, including Closer after a pass.
+      view.specialtyWindow = null;
     }
   }
 

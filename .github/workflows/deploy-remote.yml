@@ -35,3 +35,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Verify protocol v2 health
+        run: >-
+          curl --fail --silent --show-error --retry 12 --retry-delay 5
+          https://splitdecision-api.planitnow.us/api/health
+          | jq -e '.ok == true and .value.protocolVersion == 2 and .value.roomSchemaVersion == 2'

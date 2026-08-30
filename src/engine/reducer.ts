@@ -32,6 +32,7 @@ import {
   type GameAction,
   type GameState,
   type IssueId,
+  type LeadCreditSource,
   type SeatId,
   type SideId,
 } from './types.js';
@@ -158,58 +159,21 @@ function assignBriefs(state: GameState): void {
   }
 }
 
-/**
- * Seats that may still resolve an `after_closing_reveal` power. The window
- * stays open until every one of them acts or declines.
- */
-export function getClosingPowerActors(state: GameState): SeatId[] {
-  if (state.phase !== 'closing_power_window') return [];
-  return SEAT_ORDER.filter((seat) => hasUnusedPower(state, seat)
-    && getSeatSpecialty(state, seat)?.powerTiming === 'after_closing_reveal');
+function clockwiseFrom(start: SeatId): SeatId[] {
+  const startIndex = SEAT_ORDER.indexOf(start);
+  return SEAT_ORDER.map(
+    (_, offset) => SEAT_ORDER[(startIndex + offset) % SEAT_ORDER.length] as SeatId,
+  );
 }
 
-function finishClosingScoring(state: GameState): void {
-  state.phase = 'closing_scoring';
-  for (const issueId of state.closingRevealed) scoreIssue(state, issueId, 'closing');
-
+function finishVerdict(state: GameState): void {
   applySpecialtyBonuses(state);
-
   state.verdict = resolveVerdict(state);
   state.phase = 'complete';
   appendEvent(state, 'verdict_resolved', state.verdict);
 }
 
-function resolveClosingAndVerdict(state: GameState): void {
-  const provisional = resolveVerdict(state);
-  state.provisionalVerdict = provisional;
-  appendEvent(state, 'normal_case_complete', {
-    reputation: Object.fromEntries(Object.entries(state.players).map(([seat, player]) => [seat, player.reputation])),
-    provisional,
-  });
-
-  const revealed = Object.values(state.players).map((player) => player.closingArgumentIssue);
-  state.closingRevealed = ISSUE_IDS.filter((issueId) => revealed.includes(issueId));
-  appendEvent(state, 'closing_arguments_revealed', { issues: state.closingRevealed });
-
-  // Closer resolves between the reveal and Closing Argument scoring.
-  state.phase = 'closing_power_window';
-  if (getClosingPowerActors(state).length > 0) return;
-
-  finishClosingScoring(state);
-}
-
-function finishRound(state: GameState): void {
-  const hearings = state.hearingSchedule[state.round - 1];
-  if (!hearings) throw new Error(`Missing Hearing schedule for Round ${state.round}`);
-  scoreIssue(state, hearings[0], 'hearing');
-  scoreIssue(state, hearings[1], 'hearing');
-  appendEvent(state, 'round_completed', { round: state.round });
-
-  if (state.round === state.rules.rounds) {
-    resolveClosingAndVerdict(state);
-    return;
-  }
-
+function beginNextRound(state: GameState): void {
   for (const side of SIDE_IDS) {
     state.dividerBySide[side] = PARTNER_BY_SEAT[state.dividerBySide[side]];
     state.briefs[side] = createBriefState(state.dividerBySide[side], side);
@@ -220,6 +184,111 @@ function finishRound(state: GameState): void {
   state.round += 1;
   state.phase = 'round_split_commit';
   revealNextDocket(state);
+}
+
+function finishScoringSequence(state: GameState): void {
+  if (state.provisionalVerdict !== null) {
+    finishVerdict(state);
+    return;
+  }
+
+  appendEvent(state, 'round_completed', { round: state.round });
+  if (state.round === state.rules.rounds) resolveClosingAndVerdict(state);
+  else beginNextRound(state);
+}
+
+function scorePendingIssue(state: GameState): void {
+  const pending = state.pendingIssueScores.shift();
+  if (!pending) throw new Error('No pending Issue to score');
+  scoreIssue(state, pending.issueId, pending.source);
+  advanceIssueScoring(state);
+}
+
+function advanceIssueScoring(state: GameState): void {
+  const pending = state.pendingIssueScores[0];
+  if (!pending) {
+    finishScoringSequence(state);
+    return;
+  }
+
+  const eligible = clockwiseFrom(state.startingPlayer).filter((seat) => {
+    const specialty = getSeatSpecialty(state, seat);
+    return hasUnusedPower(state, seat)
+      && specialty?.powerTiming === 'before_issue_scores'
+      && specialty.powerIssue === pending.issueId;
+  });
+  if (eligible.length === 0) {
+    scorePendingIssue(state);
+    return;
+  }
+
+  state.activeSeat = null;
+  state.phase = 'specialty_power_window';
+  state.specialtyWindow = {
+    kind: 'before_issue_scores',
+    issueId: pending.issueId,
+    pendingSeats: eligible,
+  };
+  appendEvent(state, 'specialty_window_opened', {
+    kind: 'before_issue_scores',
+    issueId: pending.issueId,
+    eligible,
+  });
+}
+
+function beginClosingScores(state: GameState): void {
+  state.specialtyWindow = null;
+  state.phase = 'closing_scoring';
+  state.pendingIssueScores = GAME_DATA.issueOrder
+    .filter((issueId) => state.closingRevealed.includes(issueId))
+    .map((issueId) => ({ issueId, source: 'closing' as LeadCreditSource }));
+  advanceIssueScoring(state);
+}
+
+function resolveClosingAndVerdict(state: GameState): void {
+  state.provisionalVerdict = resolveVerdict(state);
+  appendEvent(state, 'normal_case_complete', {
+    reputation: Object.fromEntries(Object.entries(state.players).map(([seat, player]) => [seat, player.reputation])),
+    provisional: state.provisionalVerdict,
+  });
+
+  const revealed = Object.values(state.players).map((player) => player.closingArgumentIssue);
+  state.closingRevealed = ISSUE_IDS.filter((issueId) => revealed.includes(issueId));
+  appendEvent(state, 'closing_arguments_revealed', { issues: state.closingRevealed });
+
+  const closers = clockwiseFrom(state.startingPlayer).filter((seat) => hasUnusedPower(state, seat)
+    && getSeatSpecialty(state, seat)?.powerTiming === 'after_closing_reveal');
+  if (closers.length > 0) {
+    state.phase = 'specialty_power_window';
+    state.specialtyWindow = {
+      kind: 'after_closing_reveal',
+      issueId: null,
+      pendingSeats: closers,
+    };
+    appendEvent(state, 'specialty_window_opened', {
+      kind: 'after_closing_reveal',
+      eligible: closers,
+    });
+  } else {
+    beginClosingScores(state);
+  }
+}
+
+function finishRound(state: GameState): void {
+  const hearings = state.hearingSchedule[state.round - 1];
+  if (!hearings) throw new Error(`Missing Hearing schedule for Round ${state.round}`);
+  state.pendingIssueScores = hearings.map((issueId) => ({ issueId, source: 'hearing' }));
+  advanceIssueScoring(state);
+}
+
+function resolveSpecialtyWindowStep(state: GameState): void {
+  const window = state.specialtyWindow;
+  if (!window) throw new Error('Specialty window disappeared');
+  window.pendingSeats.shift();
+  if (window.pendingSeats.length > 0) return;
+  state.specialtyWindow = null;
+  if (window.kind === 'after_closing_reveal') beginClosingScores(state);
+  else scorePendingIssue(state);
 }
 
 function validateCardResolution(
@@ -297,21 +366,37 @@ export function applyAction(state: GameState, value: unknown): ApplyActionResult
       if (SEAT_ORDER.every((seat) => next.players[seat].specialtyId !== null)) {
         next.phase = 'round_split_commit';
         appendEvent(next, 'specialties_locked', { seats: [...SEAT_ORDER] });
+        revealNextDocket(next);
       }
     } else if (action.type === 'use_specialty') {
+      const window = next.specialtyWindow;
+      if (next.phase !== 'specialty_power_window' || !window) {
+        return fail('wrong_phase', 'There is no Specialty power window open');
+      }
+      if (window.pendingSeats[0] !== action.actor) {
+        return fail('not_active_player', `${action.actor} is not acting in this Specialty window`);
+      }
       if (!hasUnusedPower(next, action.actor)) {
         return fail('specialty_unavailable', `${action.actor} has no unused Specialty power`);
       }
       const specialty = getSeatSpecialty(next, action.actor);
       if (!specialty) return fail('specialty_unavailable', `${action.actor} has no Specialty`);
 
-      if (specialty.powerTiming === 'before_issue_scores') {
-        if (next.phase !== 'round_argue') return fail('wrong_phase', 'This Specialty resolves while arguing the case');
-        if (next.activeSeat !== action.actor) return fail('not_active_player', `${action.actor} is not the active firm`);
+      if (window.kind === 'before_issue_scores') {
+        if (specialty.powerTiming !== 'before_issue_scores'
+            || specialty.powerIssue !== window.issueId) {
+          return fail('specialty_not_applicable', 'This Specialty does not apply to the pending Issue score');
+        }
+        if (action.toIssue !== undefined || action.fromIssues !== undefined) {
+          return fail('unexpected_specialty_options', 'This Specialty does not move markers');
+        }
         applyBeforeIssueScoresPower(next, action.actor);
         if (next.recordTelemetry) next.actionHistory.push(action);
-      } else if (specialty.powerTiming === 'after_closing_reveal') {
-        if (next.phase !== 'closing_power_window') return fail('wrong_phase', 'This Specialty resolves after Closing Arguments are revealed');
+        resolveSpecialtyWindowStep(next);
+      } else if (window.kind === 'after_closing_reveal') {
+        if (specialty.powerTiming !== 'after_closing_reveal') {
+          return fail('specialty_not_applicable', 'This Specialty cannot resolve after Closing reveal');
+        }
         const toIssue = action.toIssue;
         const fromIssues = action.fromIssues ?? [];
         if (!toIssue || !next.closingRevealed.includes(toIssue)) {
@@ -335,20 +420,26 @@ export function applyAction(state: GameState, value: unknown): ApplyActionResult
         }
         applyCloserPower(next, action.actor, fromIssues, toIssue);
         if (next.recordTelemetry) next.actionHistory.push(action);
-        if (getClosingPowerActors(next).length === 0) finishClosingScoring(next);
+        resolveSpecialtyWindowStep(next);
       } else {
         return fail('specialty_not_standalone', 'This Specialty resolves with a Case card');
       }
     } else if (action.type === 'pass_specialty') {
-      if (next.phase !== 'closing_power_window') return fail('wrong_phase', 'There is no Specialty window open');
-      if (!getClosingPowerActors(next).includes(action.actor)) {
+      const window = next.specialtyWindow;
+      if (next.phase !== 'specialty_power_window' || !window) {
+        return fail('wrong_phase', 'There is no Specialty window open');
+      }
+      if (window.pendingSeats[0] !== action.actor) {
         return fail('specialty_unavailable', `${action.actor} has no pending Specialty window`);
       }
-      // Declining spends the one-time window without revealing the card.
-      next.players[action.actor].specialtyUsed = true;
       if (next.recordTelemetry) next.actionHistory.push(action);
-      appendEvent(next, 'specialty_declined', {}, action.actor);
-      if (getClosingPowerActors(next).length === 0) finishClosingScoring(next);
+      appendEvent(next, 'specialty_passed', {
+        kind: window.kind,
+        issueId: window.issueId,
+      }, action.actor);
+      // A pass declines only this scoring opportunity. The card stays hidden
+      // and can still be used before the same Issue scores later in the game.
+      resolveSpecialtyWindowStep(next);
     } else if (action.type === 'commit_split') {
       if (next.phase !== 'round_split_commit') return fail('wrong_phase', 'Briefs are not being divided now');
       const side = SIDE_BY_SEAT[action.actor];

@@ -8,6 +8,7 @@ import {
   createGame,
   createRandom,
   getPendingActors,
+  getLegalActions,
   hashGameState,
   replayGame,
   runBotGame,
@@ -44,8 +45,11 @@ test('a random legal game reaches a verdict and consumes every Case card once', 
   const game = playGame('complete-game');
   assert.equal(game.state.phase, 'complete');
   assert.ok(game.state.verdict);
-  // 96 Case card resolutions plus one Specialty choice per firm.
-  assert.equal(game.actions.length, 100);
+  assert.equal(
+    game.actions.filter((action) => action.type === 'play_docket_card').length,
+    72,
+  );
+  assert.ok(game.actions.length >= 100, 'scoring windows may add Specialty decisions');
   assert.equal(game.state.caseDeckIndex, 36);
 
   const docketEvents = game.state.eventLog.filter(
@@ -80,6 +84,20 @@ test('batch simulations return complete aggregate metrics', () => {
   assert.ok(summary.internalTieRate >= 0 && summary.internalTieRate <= 1);
   assert.ok(summary.scheduledIssueRate >= 0 && summary.scheduledIssueRate <= 1);
   assert.ok(summary.knownClosingRate >= 0 && summary.knownClosingRate <= 1);
+  const specialtyTotals = Object.values(summary.specialtyMetrics).reduce(
+    (total, metric) => ({
+      offered: total.offered + metric.offered,
+      selected: total.selected + metric.selected,
+      used: total.used + metric.used,
+      wins: total.wins + metric.wins,
+    }),
+    { offered: 0, selected: 0, used: 0, wins: 0 },
+  );
+  assert.deepEqual(
+    { offered: specialtyTotals.offered, selected: specialtyTotals.selected, wins: specialtyTotals.wins },
+    { offered: 800, selected: 400, wins: 100 },
+  );
+  assert.ok(specialtyTotals.used <= specialtyTotals.selected);
 });
 
 test('Medium and Hard bots complete deterministic legal games', () => {
@@ -87,7 +105,7 @@ test('Medium and Hard bots complete deterministic legal games', () => {
   const first = runBotGame('skilled-bot-game', controllers);
   const second = runBotGame('skilled-bot-game', controllers);
   assert.deepEqual(first, second);
-  assert.equal(first.actions, 100);
+  assert.ok(first.actions >= 100);
 });
 
 test('Medium and Hard choices do not depend on opponents\' Closing Arguments', () => {
@@ -119,6 +137,58 @@ test('Medium and Hard choices do not depend on opponents\' Closing Arguments', (
   assert.deepEqual(
     chooseHardAction(state, actor, createRandom('hard-secret-test')),
     chooseHardAction(altered, actor, createRandom('hard-secret-test')),
+  );
+});
+
+test('Medium and Hard ignore every hidden opponent input', () => {
+  let state = createGame({
+    seed: 'bot-information-state',
+    controllers: { P1: 'hard', D1: 'hard', P2: 'hard', D2: 'hard' },
+  });
+  const setupRandom = createRandom('bot-information-state:setup');
+  while (state.phase === 'setup_specialty_choice') {
+    const actor = getPendingActors(state)[0];
+    const result = applyAction(state, chooseEasyAction(state, actor, setupRandom));
+    assert.equal(result.ok, true, result.ok ? '' : result.error.message);
+    state = result.state;
+  }
+
+  const [committedActor] = getPendingActors(state);
+  const committed = applyAction(state, getLegalActions(state, committedActor)[0]);
+  assert.equal(committed.ok, true, committed.ok ? '' : committed.error.message);
+  state = committed.state;
+  const actor = getPendingActors(state)[0];
+  assert.ok(actor);
+  const altered = structuredClone(state);
+
+  const opponents = ['P1', 'D1', 'P2', 'D2'].filter((seat) => seat !== actor);
+  const closingValues = opponents.map((seat) => altered.players[seat].closingArgumentIssue);
+  const specialtyValues = opponents.map((seat) => ({
+    id: altered.players[seat].specialtyId,
+    options: altered.players[seat].specialtyOptions,
+  }));
+  opponents.forEach((seat, index) => {
+    altered.players[seat].closingArgumentIssue = closingValues[(index + 1) % closingValues.length];
+    altered.players[seat].specialtyId = specialtyValues[(index + 1) % specialtyValues.length].id;
+    altered.players[seat].specialtyOptions = specialtyValues[(index + 1) % specialtyValues.length].options;
+  });
+  const future = altered.caseDeck.slice(altered.caseDeckIndex).reverse();
+  altered.caseDeck.splice(altered.caseDeckIndex, future.length, ...future);
+  for (const side of ['plaintiff', 'defense']) {
+    if (altered.briefs[side].submittedSplit !== null
+        && altered.briefs[side].divider !== actor) {
+      altered.briefs[side].submittedSplit = null;
+    }
+  }
+  altered.eventLog = altered.eventLog.filter((event) => event.type !== 'split_committed');
+
+  assert.deepEqual(
+    chooseMediumAction(state, actor, createRandom('all-hidden-medium')),
+    chooseMediumAction(altered, actor, createRandom('all-hidden-medium')),
+  );
+  assert.deepEqual(
+    chooseHardAction(state, actor, createRandom('all-hidden-hard')),
+    chooseHardAction(altered, actor, createRandom('all-hidden-hard')),
   );
 });
 

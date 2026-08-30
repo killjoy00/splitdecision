@@ -15,7 +15,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  deploy-remote:
+    environment:
+      name: remote-production
+      url: https://splitdecision-api.planitnow.us
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Test and build remote service
+        run: npm test && npm run build:remote
+      - name: Deploy Worker and Durable Object
+        run: npm run deploy:remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Verify protocol v2 health
+        run: >-
+          curl --fail --silent --show-error --retry 12 --retry-delay 5
+          https://splitdecision-api.planitnow.us/api/health
+          | jq -e '.ok == true and .value.protocolVersion == 2 and .value.roomSchemaVersion == 2'
+
+  deploy-pages:
+    needs: deploy-remote
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
