@@ -1,5 +1,10 @@
 # Closing Arguments Web Prototype — Codex Handoff v0.2
 
+> This is the original design and implementation handoff. Its rules contracts remain
+> useful source material, but its milestone plan, kickoff prompt, and statements about
+> unbuilt features are historical. See `README.md`, `docs/ENGINE_STATUS.md`, and
+> `docs/ROADMAP.md` for the current Split Decision implementation.
+
 ## 1. Purpose
 
 Build a browser-based playtest implementation of **Closing Arguments**, a four-player strategy game about two pairs of co-counsel law firms. Each side must win legal Issues collectively, but only one firm wins the game.

@@ -97,3 +97,7 @@ asymmetry that reduced the tie rate.
 4. **Test the changes separately before combining them.** Run current rules, Specialties only, Reframe only, and both. A good first target is to bring the all-Medium side-tiebreak rate below 40% without pushing Closing side flips outside roughly 10–25%.
 
 Do not change marker totals or Hearing points first. The present test shows that skilled sides already keep margins extremely tight; changing only the numeric rewards is more likely to move the tie frequency than create genuinely different strategies.
+
+The current experiment backlog expands these ideas into five isolated, feature-flagged
+variants—including Signature Argument, Reframe, Brief Doctrines, Court Agenda, and
+card-specific precedent text—in `docs/ROADMAP.md`.

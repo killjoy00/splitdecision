@@ -1,77 +1,84 @@
-# Milestone 0 engine status
+# Current implementation status
 
-## Completed in Milestone 0
+Milestone 0 is complete. The repository now contains the deterministic game engine,
+local and remote browser clients, three bot levels, the full Specialty module, and
+the validation and deployment paths required for a playable production build.
 
-- Complete responsive React pass-and-play interface
-- Four named Human, Easy, Medium, or Hard seats
-- Private-device handoffs for splits, brief choices, and turns
-- Automatic local save/resume, scoring history, and verdict presentation
-- Pure deterministic rules engine isolated from React
-- Seeded setup with mirrored Hearing schedule
-- All 36 Case cards and all 10 legal 3/3 partitions
-- Simultaneous split and brief-choice commit flow
-- Lead, Co-Counsel, and Focus card resolution
-- Normal Hearings, Closing Arguments, marker clearing, and all base tiebreakers
-- Team-floor verdict and individual winner resolution
-- Secret Closing Argument and private-choice visibility filtering
-- Deterministic action replay and state hashes
-- Easy random bots, transparent Medium heuristics, and sampled-lookahead Hard bots
-- Headless population profiles, difficulty matchups, and differentiation metrics
-- Development invariants and automated tests
+The original design handoff and first pull-request description remain in `docs/`
+as historical records. This file and the root `README.md` are the current status
+sources.
 
-## Validation
+## Playable product
 
-- `npm test`: engine and Cloudflare room suites passing
-- 1,000 seeded random-bot games without an invariant failure
-- Every simulated game resolved exactly 96 player actions and consumed all 36 Case cards
+- responsive local pass-and-play and private remote rooms
+- four named Human, Easy, Medium, or Hard seats
+- private handoffs or per-device views for every secret decision
+- static pregame onboarding and a complete in-app rules reference
+- automatic local save/resume and private remote recovery links
+- host seat management, bot replacement, host transfer, and rematches
+- public board, Docket, score floors, Hearing history, and verdict explanation
 
-Aggregate random-bot results are recorded in `docs/milestone-0-simulation.json`:
+## Rules engine
 
-- Plaintiff side wins: 49.8%
-- Defense side wins: 50.2%
-- Lead actions: 49.98%
-- Co-Counsel actions: 50.02%
-- Highest table score eliminated by the team-floor rule: 10.5%
-- Closing Arguments changed the winning side: 13.6%
-- Closing Arguments changed the winning firm: 27.9%
+- pure deterministic reducer and legal-action generator isolated from React
+- all 36 Case cards and all ten legal 3/3 partitions
+- seeded setup and mirrored six-round Hearing schedule
+- simultaneous split and brief-choice commitments
+- Lead, Co-Counsel, and Focus resolution
+- normal Hearings, Closing Arguments, clearing, and every base tiebreaker
+- team-floor verdict and individual winner resolution
+- deterministic replay, public state hashes, and development invariants
+- player-view filtering for Closing Arguments, Specialties, and private commitments
 
-These figures validate execution and rough symmetry only. The strategic-bot report and gameplay recommendations are in `docs/GAMEPLAY_ANALYSIS.md`.
+## Specialties and bots
 
-## Deferred intentionally
+- secret two-card Specialty draft with all twelve roles enabled by default
+- all four power timings and conditional endgame bonuses
+- Easy random, Medium heuristic, and Hard sampled-lookahead bots
+- determinized Medium and Hard decisions that do not inspect canonical opponent secrets
+- headless profiles, difficulty matchups, and gameplay-differentiation metrics
 
-- Full simulation telemetry dashboard
+`specialtiesEnabled: false` still runs the complete base game and leaves every
+Specialty field empty.
 
-The Specialty module is complete and enabled by default. `specialtiesEnabled: false`
-still plays the base-rules game, and the engine keeps every Specialty field empty in
-that mode.
+## Current validation
 
-## Specialty module
+- `npm test`: 41 engine tests and 8 Cloudflare room tests
+- production React build and Cloudflare Worker dry-run
+- mobile Chromium smoke test in GitHub Actions
+- protocol-v2 Worker health check before every Pages deployment
+- 10,000 seeded Easy-bot games without an invariant failure
 
-- setup deals each firm two of the twelve Specialties and locks one secretly
-- all four power timings resolve: before an Issue scores, when resolving a Case
-  card, when resolving Co-Counsel, and after the Closing Argument reveal
-- powers are one-time and reveal the card when spent; declining the Closer window
-  forfeits the power without revealing it
-- endgame bonuses are paid after Closing Arguments score and before the verdict,
-  so they count toward the team floor
-- Team Builder reads Reputation from before any bonus is paid, so bonuses cannot
-  cascade within the same pass
-- player views redact both the chosen Specialty and the two dealt options, and the
-  draft hides which opponents have already committed
+The current 10,000-game report is `docs/milestone-0-simulation-v2.json`:
 
-### Measured bonus reach
+- Plaintiff wins: 50.07%
+- Defense wins: 49.93%
+- individual firm wins: 24.77%–25.21%
+- Lead / Co-Counsel use: 49.95% / 50.05%
+- normal Hearings decided by a side tiebreak: 11.48%
+- highest table score eliminated by the team-floor rule: 11.30%
+- Closing changed the winning side: 13.58%
+- Closing changed the winning firm: 31.07%
 
-Share of games in which each Specialty's endgame condition was met, by bot level:
+These figures validate execution and rough symmetry. They do not establish human
+balance or prove that the best strategies are sufficiently different.
 
-| Bot level | Overall bonus rate |
-|---|---|
-| Easy | 24.6% |
-| Medium | 31.1% |
-| Hard | 38.0% |
+## Known design questions
 
-The rate rising with bot strength is the intended signal: bonuses reward directed
-play rather than luck. The spread between cards is wide, though — Generalist,
-Team Builder, and Closer land 60-72% at Medium, while the six single-Issue
-specialists land 10-27%. The +3 versus +2 payout only partly offsets that. The
-conditions are implemented exactly as written in the canonical data, so closing
-that gap is a rules-tuning decision rather than an engine change.
+- all-Hard games still decide 54.0% of normal Hearings through a side tiebreak,
+  indicating strategic convergence among strong players
+- Generalist, Team Builder, and Closer earn their Specialty bonuses much more often
+  than the six single-Issue specialists
+- Co-Counsel may provide too much side strength relative to its personal-credit cost
+- Issues heard for the second time earlier can receive more late placements before Closing
+- the production recovery and host-transfer flows need repeated human, multi-device playtests
+
+The measured bot results and rationale are in `docs/GAMEPLAY_ANALYSIS.md`. The
+ordered product work and five isolated gameplay experiments are in `docs/ROADMAP.md`.
+
+## Next release gates
+
+1. Complete at least five full production remote games across multiple real devices.
+2. Capture game duration, reconnects, abandoned rooms, and per-Specialty outcomes.
+3. Prototype one gameplay-differentiation rule behind a feature flag.
+4. Compare that variant against the current rules on identical seeds before enabling it.

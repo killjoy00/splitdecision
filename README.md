@@ -14,6 +14,8 @@ The playable Milestone 0 build includes:
 - four Human, Easy, Medium, or Hard seats with named firms
 - privacy handoffs for every secret decision
 - responsive public board, Docket, scoring history, and verdict
+- static pregame onboarding with the objective, round flow, and core actions
+- a complete in-app rules reference organized by flow, scoring, and endgame
 - automatic browser save and resume
 - pure deterministic rules engine separated from React
 - seeded setup and mirrored Hearing schedule
@@ -41,7 +43,9 @@ Bonuses are paid after Closing Arguments score and before the verdict, so they
 count toward the team floor. Set `rules.specialtiesEnabled: false` to play the
 earlier base-rules game.
 
-After the Specialty timing and hidden-information fixes, the engine completed a fresh 1,000-game random-bot validation without an invariant failure. The protocol-v2 report, including per-Specialty offer, pick, use, bonus, and win counts, is checked in at `docs/milestone-0-simulation-v2.json`. It validates execution and rough seat symmetry, not strategic balance; earlier reports describe the superseded rules implementation.
+After the Specialty timing and hidden-information fixes, the engine completed a fresh 10,000-game random-bot validation without an invariant failure. Plaintiff won 50.07% of games, Defense won 49.93%, and each firm won between 24.77% and 25.21%. The protocol-v2 report, including per-Specialty offer, pick, use, bonus, and win counts, is checked in at `docs/milestone-0-simulation-v2.json`. It validates execution and rough seat symmetry, not strategic balance; earlier reports describe the superseded rules implementation.
+
+See [`docs/ENGINE_STATUS.md`](docs/ENGINE_STATUS.md) for the current implementation and validation status, [`docs/GAMEPLAY_ANALYSIS.md`](docs/GAMEPLAY_ANALYSIS.md) for measured strategic behavior, and [`docs/ROADMAP.md`](docs/ROADMAP.md) for the next playtest and gameplay experiments. Documents explicitly marked historical are retained as implementation records and should not be read as the current feature set.
 
 ## Run locally
 
