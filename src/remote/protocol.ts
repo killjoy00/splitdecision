@@ -1,7 +1,7 @@
-import type { GameAction, SeatId } from '../engine/types.js';
+import type { BotLevel, GameAction, SeatId } from '../engine/types.js';
 import type { PlayerView } from '../engine/visibility.js';
 
-export type RemoteController = 'human' | 'easy';
+export type RemoteController = BotLevel;
 
 export interface RemoteSeat {
   seat: SeatId;
@@ -29,7 +29,10 @@ export interface RemotePlayerSnapshot {
   seat: SeatId;
   game: PlayerView | null;
   legalActions: GameAction[];
+  /** First pending seat. Retained for display; prefer `pendingActors`. */
   pendingActor: SeatId | null;
+  /** Every seat that may act now. Simultaneous phases list more than one. */
+  pendingActors: SeatId[];
 }
 
 export type RemoteApiSuccess<T> = { ok: true; value: T };

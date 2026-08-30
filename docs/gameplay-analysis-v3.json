@@ -1,0 +1,203 @@
+{
+  "seed": "gameplay-analysis-v2",
+  "samples": {
+    "profileGames": 300,
+    "matchupGames": 300,
+    "hardGames": 100
+  },
+  "deck": {
+    "cards": 36,
+    "fixedActionCards": 30,
+    "flexibleActionCards": 6,
+    "leadCards": 15,
+    "coCounselCards": 15,
+    "specialtiesInData": 12
+  },
+  "profiles": {
+    "easy": {
+      "games": 300,
+      "seedPrefix": "gameplay-analysis-v2:all-easy",
+      "controllers": {
+        "P1": "easy",
+        "D1": "easy",
+        "P2": "easy",
+        "D2": "easy"
+      },
+      "firmWins": {
+        "P1": 72,
+        "D1": 68,
+        "P2": 85,
+        "D2": 75
+      },
+      "sideWins": {
+        "plaintiff": 157,
+        "defense": 143
+      },
+      "leadRate": 0.5001388888888889,
+      "coCounselRate": 0.4998611111111111,
+      "scheduledIssueRate": 0.3300925925925926,
+      "knownClosingRate": 0.16875,
+      "postHearingClosingRate": 0.16292134831460675,
+      "sideTieRate": 0.12361111111111112,
+      "internalTieRate": 0.09222222222222222,
+      "supportScoreRate": 0.8902777777777777,
+      "closeHearingRate": 0.2797222222222222,
+      "blowoutHearingRate": 0.22111111111111112,
+      "averageSideMargin": 3.963611111111111,
+      "averageScoreRange": 8.493333333333334,
+      "highestScoreEliminatedRate": 0.09666666666666666,
+      "closingChangedSideRate": 0.12333333333333334,
+      "closingChangedFirmRate": 0.32666666666666666
+    },
+    "medium": {
+      "games": 300,
+      "seedPrefix": "gameplay-analysis-v2:all-medium",
+      "controllers": {
+        "P1": "medium",
+        "D1": "medium",
+        "P2": "medium",
+        "D2": "medium"
+      },
+      "firmWins": {
+        "P1": 64,
+        "D1": 81,
+        "P2": 70,
+        "D2": 85
+      },
+      "sideWins": {
+        "plaintiff": 134,
+        "defense": 166
+      },
+      "leadRate": 0.46703703703703703,
+      "coCounselRate": 0.532962962962963,
+      "scheduledIssueRate": 0.5177314814814815,
+      "knownClosingRate": 0.23189814814814816,
+      "postHearingClosingRate": 0.28854118729866546,
+      "sideTieRate": 0.3788888888888889,
+      "internalTieRate": 0.11166666666666666,
+      "supportScoreRate": 0.9341666666666667,
+      "closeHearingRate": 0.5644444444444444,
+      "blowoutHearingRate": 0.019444444444444445,
+      "averageSideMargin": 1.781111111111111,
+      "averageScoreRange": 7.3,
+      "highestScoreEliminatedRate": 0.14666666666666667,
+      "closingChangedSideRate": 0.16666666666666666,
+      "closingChangedFirmRate": 0.38333333333333336
+    },
+    "hard": {
+      "games": 100,
+      "seedPrefix": "gameplay-analysis-v2:all-hard",
+      "controllers": {
+        "P1": "hard",
+        "D1": "hard",
+        "P2": "hard",
+        "D2": "hard"
+      },
+      "firmWins": {
+        "P1": 12,
+        "D1": 29,
+        "P2": 33,
+        "D2": 26
+      },
+      "sideWins": {
+        "plaintiff": 45,
+        "defense": 55
+      },
+      "leadRate": 0.43277777777777776,
+      "coCounselRate": 0.5672222222222222,
+      "scheduledIssueRate": 0.5398611111111111,
+      "knownClosingRate": 0.2529166666666667,
+      "postHearingClosingRate": 0.33381712626995647,
+      "sideTieRate": 0.54,
+      "internalTieRate": 0.10916666666666666,
+      "supportScoreRate": 0.9291666666666667,
+      "closeHearingRate": 0.6733333333333333,
+      "blowoutHearingRate": 0.0075,
+      "averageSideMargin": 1.3233333333333333,
+      "averageScoreRange": 6.54,
+      "highestScoreEliminatedRate": 0.21,
+      "closingChangedSideRate": 0.21,
+      "closingChangedFirmRate": 0.35
+    }
+  },
+  "matchups": {
+    "mediumVsEasy": {
+      "games": 300,
+      "seedPrefix": "gameplay-analysis-v2:medium-vs-easy",
+      "challenger": "medium",
+      "opponent": "easy",
+      "challengerWins": 287,
+      "opponentWins": 13,
+      "challengerWinRate": 0.9566666666666667,
+      "challengerPlaintiffGames": 150,
+      "challengerDefenseGames": 150,
+      "leadRate": 0.48791666666666667,
+      "coCounselRate": 0.5120833333333333,
+      "scheduledIssueRate": 0.39828703703703705,
+      "knownClosingRate": 0.2064351851851852,
+      "postHearingClosingRate": 0.21516054286660047,
+      "sideTieRate": 0.14972222222222223,
+      "internalTieRate": 0.10888888888888888,
+      "supportScoreRate": 0.9308333333333333,
+      "closeHearingRate": 0.30027777777777775,
+      "blowoutHearingRate": 0.1511111111111111,
+      "averageSideMargin": 3.5302777777777776,
+      "averageScoreRange": 13.306666666666667,
+      "highestScoreEliminatedRate": 0.03333333333333333,
+      "closingChangedSideRate": 0.03666666666666667,
+      "closingChangedFirmRate": 0.18666666666666668
+    },
+    "hardVsMedium": {
+      "games": 100,
+      "seedPrefix": "gameplay-analysis-v2:hard-vs-medium",
+      "challenger": "hard",
+      "opponent": "medium",
+      "challengerWins": 64,
+      "opponentWins": 36,
+      "challengerWinRate": 0.64,
+      "challengerPlaintiffGames": 50,
+      "challengerDefenseGames": 50,
+      "leadRate": 0.44708333333333333,
+      "coCounselRate": 0.5529166666666666,
+      "scheduledIssueRate": 0.5104166666666666,
+      "knownClosingRate": 0.24097222222222223,
+      "postHearingClosingRate": 0.33053221288515405,
+      "sideTieRate": 0.42583333333333334,
+      "internalTieRate": 0.10416666666666667,
+      "supportScoreRate": 0.9175,
+      "closeHearingRate": 0.5875,
+      "blowoutHearingRate": 0.019166666666666665,
+      "averageSideMargin": 1.6808333333333334,
+      "averageScoreRange": 7.86,
+      "highestScoreEliminatedRate": 0.12,
+      "closingChangedSideRate": 0.09,
+      "closingChangedFirmRate": 0.26
+    },
+    "hardVsEasy": {
+      "games": 100,
+      "seedPrefix": "gameplay-analysis-v2:hard-vs-easy",
+      "challenger": "hard",
+      "opponent": "easy",
+      "challengerWins": 99,
+      "opponentWins": 1,
+      "challengerWinRate": 0.99,
+      "challengerPlaintiffGames": 50,
+      "challengerDefenseGames": 50,
+      "leadRate": 0.4751388888888889,
+      "coCounselRate": 0.5248611111111111,
+      "scheduledIssueRate": 0.41180555555555554,
+      "knownClosingRate": 0.21347222222222223,
+      "postHearingClosingRate": 0.22455403987408185,
+      "sideTieRate": 0.15833333333333333,
+      "internalTieRate": 0.1275,
+      "supportScoreRate": 0.9375,
+      "closeHearingRate": 0.325,
+      "blowoutHearingRate": 0.12416666666666666,
+      "averageSideMargin": 3.4133333333333336,
+      "averageScoreRange": 15.88,
+      "highestScoreEliminatedRate": 0.01,
+      "closingChangedSideRate": 0.01,
+      "closingChangedFirmRate": 0.24
+    }
+  }
+}

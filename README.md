@@ -9,23 +9,37 @@ The playable Milestone 0 build includes:
 - private remote rooms for up to four devices
 - six-character invite codes and shareable room links
 - server-authoritative turns backed by a Cloudflare Durable Object
-- mix-and-match Human and Easy-bot remote seats
+- mix-and-match Human, Easy, Medium, and Hard remote seats
 - complete local pass-and-play React interface
-- four Human or Easy-bot seats with named firms
+- four Human, Easy, Medium, or Hard seats with named firms
 - privacy handoffs for every secret decision
 - responsive public board, Docket, scoring history, and verdict
 - automatic browser save and resume
 - pure deterministic rules engine separated from React
 - seeded setup and mirrored Hearing schedule
+- secret Specialty draft, one-time powers, and endgame bonuses
 - all ten legal 3/3 brief partitions
 - Lead, Co-Counsel, and Focus card resolution
 - normal Hearing and Closing Argument scoring
 - team-floor verdict calculation
 - player-view redaction for secret Closing Argument information
-- Easy random-bot simulation
+- Easy random, Medium heuristic, and Hard sampled-lookahead bots
+- difficulty matchups and gameplay-differentiation simulation metrics
 - engine tests and invariant checks
 
-The advanced Specialty module is represented in canonical data but is intentionally not active in this first implementation slice. A later engine increment should add Specialty selection, timing windows, powers, and endgame bonuses before the UI is treated as rules-complete.
+The Specialty module is now active. Each firm is secretly dealt two of the twelve
+Specialties during setup and locks one before Round 1. Every card carries a
+one-time power and a conditional endgame bonus:
+
+- six Issue specialists place an extra Firm marker before their Issue scores
+- three pair specialists add a marker when resolving a Case card in either Issue
+- Generalist retargets one Case card to any Issue, keeping its action type
+- Team Builder adds one Joint Work marker when resolving Co-Counsel
+- Closer moves up to two Firm markers into a revealed Issue after the reveal
+
+Bonuses are paid after Closing Arguments score and before the verdict, so they
+count toward the team floor. Set `rules.specialtiesEnabled: false` to play the
+earlier base-rules game.
 
 The engine has completed a 1,000-game random-bot validation run without an invariant failure. The aggregate report is checked in at `docs/milestone-0-simulation.json`; it validates execution and rough seat symmetry, not strategic balance. The simulator supports larger local or CI runs.
 
@@ -35,6 +49,7 @@ The engine has completed a 1,000-game random-bot validation run without an invar
 npm install
 npm test
 npm run simulate -- --games 1000 --seed demo
+npm run analyze:gameplay -- --profile-games 300 --matchup-games 300 --hard-games 80
 npm run dev
 ```
 

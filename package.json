@@ -15,6 +15,7 @@
     "test:engine": "npm run build:engine && node --test tests/*.test.mjs",
     "test:remote": "vitest run",
     "simulate": "npm run build:engine && node scripts/simulate.mjs",
+    "analyze:gameplay": "npm run build:engine && node scripts/analyze-gameplay.mjs",
     "check": "npm test && npm run simulate -- --games 1000 --seed demo"
   },
   "dependencies": {

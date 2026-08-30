@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  GAME_DATA,
   assertGameInvariants,
   createGame,
   hashGameState,
@@ -29,11 +30,30 @@ test('same seed creates the same initial state', () => {
   assert.deepEqual(first.docket, second.docket);
 });
 
-test('Milestone 0 rejects enabled Specialties instead of applying partial rules', () => {
-  assert.throws(
-    () => createGame({ seed: 'specialty', rules: { specialtiesEnabled: true } }),
-    /not enabled|not implemented/i,
-  );
+test('setup deals every firm a private, distinct pair of Specialty options', () => {
+  const state = createGame({ seed: 'specialty-draft' });
+  assert.equal(state.phase, 'setup_specialty_choice');
+
+  const dealt = [];
+  for (const seat of ['P1', 'D1', 'P2', 'D2']) {
+    const options = state.players[seat].specialtyOptions;
+    assert.equal(options.length, 2);
+    assert.equal(state.players[seat].specialtyId, null);
+    dealt.push(...options);
+  }
+  assert.equal(new Set(dealt).size, dealt.length, 'no Specialty may be offered twice');
+
+  const canonical = new Set(GAME_DATA.specialties.map((entry) => entry.id));
+  assert.ok(dealt.every((id) => canonical.has(id)));
+});
+
+test('disabling the Specialty module skips the draft entirely', () => {
+  const state = createGame({ seed: 'no-specialty', rules: { specialtiesEnabled: false } });
+  assert.equal(state.phase, 'round_split_commit');
+  for (const seat of ['P1', 'D1', 'P2', 'D2']) {
+    assert.equal(state.players[seat].specialtyId, null);
+    assert.deepEqual(state.players[seat].specialtyOptions, []);
+  }
 });
 
 test('invariants reject noncanonical decks and incomplete Hearing schedules', () => {

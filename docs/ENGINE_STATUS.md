@@ -3,7 +3,7 @@
 ## Completed in Milestone 0
 
 - Complete responsive React pass-and-play interface
-- Four named Human or Easy-bot seats
+- Four named Human, Easy, Medium, or Hard seats
 - Private-device handoffs for splits, brief choices, and turns
 - Automatic local save/resume, scoring history, and verdict presentation
 - Pure deterministic rules engine isolated from React
@@ -15,12 +15,13 @@
 - Team-floor verdict and individual winner resolution
 - Secret Closing Argument and private-choice visibility filtering
 - Deterministic action replay and state hashes
-- Easy random bots and headless batch simulation
+- Easy random bots, transparent Medium heuristics, and sampled-lookahead Hard bots
+- Headless population profiles, difficulty matchups, and differentiation metrics
 - Development invariants and automated tests
 
 ## Validation
 
-- `npm test`: 19/19 tests passing
+- `npm test`: engine and Cloudflare room suites passing
 - 1,000 seeded random-bot games without an invariant failure
 - Every simulated game resolved exactly 96 player actions and consumed all 36 Case cards
 
@@ -34,12 +35,43 @@ Aggregate random-bot results are recorded in `docs/milestone-0-simulation.json`:
 - Closing Arguments changed the winning side: 13.6%
 - Closing Arguments changed the winning firm: 27.9%
 
-These figures validate execution and rough symmetry only. Random bots do not test strategic balance.
+These figures validate execution and rough symmetry only. The strategic-bot report and gameplay recommendations are in `docs/GAMEPLAY_ANALYSIS.md`.
 
 ## Deferred intentionally
 
-- Specialty selection, one-time powers, timing windows, and endgame Specialty bonuses
-- Standard heuristic bot and Monte Carlo bot
-- Telemetry export/dashboard and online multiplayer
+- Full simulation telemetry dashboard
 
-The engine rejects `specialtiesEnabled: true` rather than silently applying incomplete rules.
+The Specialty module is complete and enabled by default. `specialtiesEnabled: false`
+still plays the base-rules game, and the engine keeps every Specialty field empty in
+that mode.
+
+## Specialty module
+
+- setup deals each firm two of the twelve Specialties and locks one secretly
+- all four power timings resolve: before an Issue scores, when resolving a Case
+  card, when resolving Co-Counsel, and after the Closing Argument reveal
+- powers are one-time and reveal the card when spent; declining the Closer window
+  forfeits the power without revealing it
+- endgame bonuses are paid after Closing Arguments score and before the verdict,
+  so they count toward the team floor
+- Team Builder reads Reputation from before any bonus is paid, so bonuses cannot
+  cascade within the same pass
+- player views redact both the chosen Specialty and the two dealt options, and the
+  draft hides which opponents have already committed
+
+### Measured bonus reach
+
+Share of games in which each Specialty's endgame condition was met, by bot level:
+
+| Bot level | Overall bonus rate |
+|---|---|
+| Easy | 24.6% |
+| Medium | 31.1% |
+| Hard | 38.0% |
+
+The rate rising with bot strength is the intended signal: bonuses reward directed
+play rather than luck. The spread between cards is wide, though — Generalist,
+Team Builder, and Closer land 60-72% at Medium, while the six single-Issue
+specialists land 10-27%. The +3 versus +2 payout only partly offsets that. The
+conditions are implemented exactly as written in the canonical data, so closing
+that gap is a rules-tuning decision rather than an engine change.

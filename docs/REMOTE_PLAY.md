@@ -1,6 +1,6 @@
 # Remote play deployment
 
-Remote games use one Cloudflare Durable Object per six-character room code. The object is the authoritative game server: it authenticates each seat, keeps Closing Arguments and unsubmitted briefs private, validates actions with the same engine used by local play, runs Easy bots, and expires inactive rooms after 30 days.
+Remote games use one Cloudflare Durable Object per six-character room code. The object is the authoritative game server: it authenticates each seat, keeps Closing Arguments and unsubmitted briefs private, validates actions with the same engine used by local play, runs Easy, Medium, and Hard bots, and expires inactive rooms after 30 days.
 
 The static React app remains on GitHub Pages at `splitdecision.planitnow.us`. The room API is a separate Worker at `splitdecision-api.planitnow.us`.
 
@@ -38,7 +38,7 @@ npm run build
 npm run build:remote
 ```
 
-The remote integration suite runs inside Cloudflare's Workers Vitest runtime. It covers room creation, four-player joins, authorization, per-player redaction, human actions, bot turns, a complete verdict, and expiry alarms.
+The remote integration suite runs inside Cloudflare's Workers Vitest runtime. It covers room creation, four-player joins, authorization, per-player redaction, bot difficulty configuration, human actions, bot turns, a complete verdict, and expiry alarms.
 
 ## Operations and recovery
 

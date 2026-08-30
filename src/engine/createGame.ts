@@ -1,6 +1,7 @@
 import { GAME_DATA } from '../data/gameData.js';
 import { appendEvent } from './events.js';
 import { createRandom, randomItem, shuffled } from './random.js';
+import { SPECIALTY_OPTIONS_PER_SEAT } from './specialties.js';
 import {
   PARTNER_BY_SEAT,
   SEATS_BY_SIDE,
@@ -71,9 +72,6 @@ export function revealNextDocket(state: GameState): void {
 
 export function createGame(options: CreateGameOptions): GameState {
   const rules = { ...DEFAULT_RULES, ...options.rules };
-  if (rules.specialtiesEnabled) {
-    throw new Error('The Specialty module is not enabled in the Milestone 0 scaffold');
-  }
   if (rules.rounds !== 6 || rules.docketSize !== 6 || rules.briefSize !== 3) {
     throw new Error('Milestone 0 currently supports the locked 6-round, 6-card, 3/3 rules only');
   }
@@ -89,6 +87,19 @@ export function createGame(options: CreateGameOptions): GameState {
   const closingBySeat = Object.fromEntries(
     SEAT_ORDER.map((seat, index) => [seat, closingDeck[index] as IssueId]),
   ) as Record<SeatId, IssueId>;
+
+  const specialtyDeck = shuffled(GAME_DATA.specialties.map((entry) => entry.id), random);
+  const specialtyOptionsBySeat = Object.fromEntries(
+    SEAT_ORDER.map((seat, index) => [
+      seat,
+      rules.specialtiesEnabled
+        ? specialtyDeck.slice(
+            index * SPECIALTY_OPTIONS_PER_SEAT,
+            (index + 1) * SPECIALTY_OPTIONS_PER_SEAT,
+          )
+        : [],
+    ]),
+  ) as Record<SeatId, string[]>;
 
   const dividerBySide = Object.fromEntries(
     SIDE_IDS.map((side) => [side, randomItem(SEATS_BY_SIDE[side], random)]),
@@ -116,9 +127,11 @@ export function createGame(options: CreateGameOptions): GameState {
         reputation: 0,
         leadCredits: [],
         closingArgumentIssue: closingBySeat[seat],
+        specialtyOptions: specialtyOptionsBySeat[seat],
         specialtyId: null,
         specialtyUsed: false,
         specialtyRevealed: false,
+        specialtyBonusAwarded: 0,
       },
     ]),
   ) as Record<SeatId, PlayerState>;
@@ -132,7 +145,7 @@ export function createGame(options: CreateGameOptions): GameState {
     schemaVersion: GAME_DATA.schemaVersion,
     seed: options.seed,
     rules,
-    phase: 'round_split_commit',
+    phase: rules.specialtiesEnabled ? 'setup_specialty_choice' : 'round_split_commit',
     round: 1,
     players,
     issues,
@@ -154,6 +167,7 @@ export function createGame(options: CreateGameOptions): GameState {
     closingRevealed: [],
     hearingResults: [],
     provisionalVerdict: null,
+    specialtyBonuses: [],
     verdict: null,
     actionHistory: [],
     eventLog: [],
@@ -166,6 +180,7 @@ export function createGame(options: CreateGameOptions): GameState {
     dividerBySide,
     firstChairBySide,
     courtFavor,
+    specialtiesEnabled: rules.specialtiesEnabled,
   });
   revealNextDocket(state);
   return state;

@@ -1,4 +1,5 @@
 import { GAME_DATA } from '../data/gameData.js';
+import { SPECIALTY_BY_ID } from './specialties.js';
 import { isValidThreeThreeSplit } from './splits.js';
 import {
   ISSUE_IDS,
@@ -48,7 +49,37 @@ export function assertGameInvariants(state: GameState): void {
     invariant(player.seatId === seat, `${seat} identity mismatch`);
     invariant(state.players[player.partnerSeatId].partnerSeatId === seat, `${seat} partner mapping is not reciprocal`);
     invariant(Number.isInteger(player.reputation) && player.reputation >= 0, `${seat} reputation must be nonnegative`);
+    if (state.rules.specialtiesEnabled) {
+      if (player.specialtyId !== null) {
+        invariant(
+          SPECIALTY_BY_ID.has(player.specialtyId),
+          `${seat} holds unknown Specialty ${player.specialtyId}`,
+        );
+        invariant(
+          player.specialtyOptions.length === 0 || player.specialtyOptions.includes(player.specialtyId),
+          `${seat} chose a Specialty it was not offered`,
+        );
+      }
+      invariant(
+        player.specialtyId !== null || !player.specialtyUsed,
+        `${seat} cannot spend a Specialty it never chose`,
+      );
+      invariant(
+        state.phase !== 'complete' || player.specialtyId !== null,
+        `${seat} must hold a Specialty in a completed game`,
+      );
+    } else {
+      invariant(player.specialtyId === null, `${seat} must not hold a Specialty when the module is off`);
+    }
   }
+
+  const chosenSpecialties = SEAT_ORDER
+    .map((seat) => state.players[seat].specialtyId)
+    .filter((specialtyId): specialtyId is string => specialtyId !== null);
+  invariant(
+    new Set(chosenSpecialties).size === chosenSpecialties.length,
+    'each firm must hold a distinct Specialty',
+  );
 
   for (const issueId of ISSUE_IDS) {
     const issue = state.issues[issueId];
@@ -94,6 +125,13 @@ export function assertGameInvariants(state: GameState): void {
     state.phase === 'round_argue' ? state.activeSeat !== null : state.activeSeat === null,
     'active seat must exist only while arguing the case',
   );
+
+  if (state.phase === 'complete' && state.rules.specialtiesEnabled) {
+    invariant(
+      state.specialtyBonuses.length === SEAT_ORDER.length,
+      'a completed game must score every Specialty bonus',
+    );
+  }
 
   const allClosingIssues = [
     ...SEAT_ORDER.map((seat) => state.players[seat].closingArgumentIssue),
