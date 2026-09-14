@@ -1,6 +1,14 @@
 name: Refresh playtest report
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/playtest-report.yml'
+      - 'scripts/playtest-sync-lib.mjs'
+      - 'scripts/sync-playtest-report.mjs'
+      - 'scripts/playtest-report-lib.mjs'
   schedule:
     - cron: '17 */6 * * *'
   workflow_dispatch:
