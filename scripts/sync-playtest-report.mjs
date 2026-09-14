@@ -113,10 +113,10 @@ async function fetchRecentPlaytestEvents(from, to) {
   return collected;
 }
 
-function automatedHeader({ from, to, added, total }) {
+function automatedHeader({ updatedAt, total }) {
   return [
     '> **Automated report.** SplitDecision refreshes this from Cloudflare Worker telemetry every six hours; no manual export or report generation is required.',
-    `> Last sync window: ${new Date(from).toISOString()} to ${new Date(to).toISOString()}. New summaries: ${added}. Cumulative summaries: ${total}.`,
+    `> Last telemetry update: ${updatedAt}. Cumulative privacy-safe summaries: ${total}.`,
     '',
   ].join('\n');
 }
@@ -124,20 +124,26 @@ function automatedHeader({ from, to, added, total }) {
 async function main() {
   assertConfiguration();
   const now = Date.now();
+  const nowIso = new Date(now).toISOString();
   const from = now - LOOKBACK_HOURS * 60 * 60 * 1_000;
   const existing = normalizeStoredPlaytestState(await readJson(STATE_PATH, null));
   const incoming = await fetchRecentPlaytestEvents(from, now);
-  const merged = mergePlaytestEvents(existing, incoming, new Date(now).toISOString());
+  const merged = mergePlaytestEvents(existing, incoming, nowIso);
+  const stableUpdatedAt = merged.added > 0 || !existing.updatedAt
+    ? nowIso
+    : existing.updatedAt;
+  merged.state.updatedAt = stableUpdatedAt;
+
   const summaries = merged.state.events.map((entry) => entry.summary);
   const report = buildPlaytestReport(summaries, { minHumanSeats: MIN_HUMANS });
-  const markdown = renderPlaytestMarkdown(report, { generatedAt: new Date(now).toISOString() });
+  const markdown = renderPlaytestMarkdown(report, { generatedAt: stableUpdatedAt });
 
   await mkdir(dirname(STATE_PATH), { recursive: true });
   await mkdir(dirname(REPORT_PATH), { recursive: true });
   await writeFile(STATE_PATH, `${JSON.stringify(merged.state, null, 2)}\n`, 'utf8');
   await writeFile(
     REPORT_PATH,
-    `${automatedHeader({ from, to: now, added: merged.added, total: merged.total })}${markdown}`,
+    `${automatedHeader({ updatedAt: stableUpdatedAt, total: merged.total })}${markdown}`,
     'utf8',
   );
 
