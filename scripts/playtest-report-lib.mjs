@@ -125,6 +125,10 @@ export function buildPlaytestReport(rawSummaries, options = {}) {
   const mechanicsCompleted = mechanics.filter((summary) => summary.outcome === 'completed');
   const multiplayerCompleted = completed.filter((summary) => Number(summary.humanSeatsAtStart) >= 2);
   const fullHumanCompleted = completed.filter((summary) => Number(summary.humanSeatsAtStart) === 4);
+  const confidenceHumanSeats = Math.max(2, minHumanSeats);
+  const balanceSampleCompleted = completed.filter(
+    (summary) => Number(summary.humanSeatsAtStart) >= confidenceHumanSeats,
+  );
 
   const seatMix = { lobby_or_unknown: 0, 1: 0, 2: 0, 3: 0, 4: 0 };
   for (const summary of summaries) {
@@ -236,15 +240,18 @@ export function buildPlaytestReport(rawSummaries, options = {}) {
   const completionRate = percent(completed.length, summaries.length);
 
   let sampleConfidence = 'early';
-  if (multiplayerCompleted.length >= 25) sampleConfidence = 'stable';
-  else if (multiplayerCompleted.length >= 10) sampleConfidence = 'directional';
+  if (balanceSampleCompleted.length >= 25) sampleConfidence = 'stable';
+  else if (balanceSampleCompleted.length >= 10) sampleConfidence = 'directional';
 
+  const cohortLabel = confidenceHumanSeats === 2
+    ? 'multiplayer (2+ human)'
+    : `${confidenceHumanSeats}+ human`;
   const decisionGates = {
     sample: sampleConfidence === 'stable'
-      ? 'STABLE: at least 25 completed multiplayer games; balance changes can use telemetry as strong evidence.'
+      ? `STABLE: at least 25 completed ${cohortLabel} games; balance changes can use telemetry as strong evidence.`
       : sampleConfidence === 'directional'
-        ? 'DIRECTIONAL: at least 10 completed multiplayer games; use telemetry with player comments before changing balance.'
-        : `HOLD: only ${multiplayerCompleted.length} completed multiplayer games; do not make balance changes from telemetry alone.`,
+        ? `DIRECTIONAL: at least 10 completed ${cohortLabel} games; use telemetry with player comments before changing balance.`
+        : `HOLD: only ${balanceSampleCompleted.length} completed ${cohortLabel} games; do not make balance changes from telemetry alone.`,
     citation: citationTargetCount >= 10
       ? `REVIEW: ${citationTargetCount} human Citation uses are enough for a directional UX/rule read.`
       : `COLLECT: ${citationTargetCount} human Citation uses; target at least 10 before judging Citation.`,
@@ -270,6 +277,8 @@ export function buildPlaytestReport(rawSummaries, options = {}) {
       mechanicsCompleted: mechanicsCompleted.length,
       multiplayerCompleted: multiplayerCompleted.length,
       fullHumanCompleted: fullHumanCompleted.length,
+      confidenceHumanSeats,
+      balanceSampleCompleted: balanceSampleCompleted.length,
       sampleConfidence,
       seatMix,
       abandonmentReasons: reasons,
@@ -382,6 +391,7 @@ Generated ${generatedAt}. Mechanics/pacing metrics include games that started wi
 | Completion rate | ${formatPercent(sample.completionRate)} |
 | Completed multiplayer games (2+ humans) | ${sample.multiplayerCompleted} |
 | Completed full-human games | ${sample.fullHumanCompleted} |
+| Balance-confidence cohort (${sample.confidenceHumanSeats}+ humans) | ${sample.balanceSampleCompleted} |
 | Sample confidence | **${sample.sampleConfidence.toUpperCase()}** |
 | Human actions analyzed | ${report.mechanics.humanActionCount} |
 | Median completed game time | ${formatDuration(game.medianMs)} |
