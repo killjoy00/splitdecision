@@ -127,6 +127,8 @@ test('buildPlaytestReport aggregates mechanics, pace, competition, and lifecycle
   assert.equal(report.samples.abandoned, 1);
   assert.equal(report.samples.multiplayerCompleted, 2);
   assert.equal(report.samples.fullHumanCompleted, 1);
+  assert.equal(report.samples.balanceSampleCompleted, 2);
+  assert.equal(report.samples.confidenceHumanSeats, 2);
   assert.equal(report.samples.abandonmentReasons.expired, 1);
   assert.equal(report.mechanics.caseActionCounts.second_chair, 10);
   assert.equal(report.mechanics.caseActionCounts.citation, 12);
@@ -162,7 +164,24 @@ test('mechanics filter can require multiplayer games without hiding lifecycle ab
   assert.equal(report.samples.summaries, 3);
   assert.equal(report.samples.abandoned, 1);
   assert.equal(report.samples.mechanicsGames, 1);
+  assert.equal(report.samples.balanceSampleCompleted, 1);
   assert.equal(report.mechanics.citationTargetCount, 2);
+});
+
+test('sample confidence follows the mechanics cohort when min humans is stricter than multiplayer', () => {
+  const summaries = Array.from({ length: 10 }, () => summary({
+    humanSeatsAtStart: 2,
+    botSeatsAtStart: 2,
+  }));
+  summaries.push(summary({ humanSeatsAtStart: 4, botSeatsAtStart: 0 }));
+
+  const report = buildPlaytestReport(summaries, { minHumanSeats: 4 });
+  assert.equal(report.samples.multiplayerCompleted, 11);
+  assert.equal(report.samples.fullHumanCompleted, 1);
+  assert.equal(report.samples.confidenceHumanSeats, 4);
+  assert.equal(report.samples.balanceSampleCompleted, 1);
+  assert.equal(report.samples.sampleConfidence, 'early');
+  assert.match(report.decisionGates.sample, /^HOLD: only 1 completed 4\+ human games/);
 });
 
 test('markdown rendering surfaces the decision-oriented report sections', () => {
@@ -173,6 +192,7 @@ test('markdown rendering surfaces the decision-oriented report sections', () => 
   assert.match(markdown, /## Mechanics/);
   assert.match(markdown, /### Citation/);
   assert.match(markdown, /Second Chair/);
+  assert.match(markdown, /Balance-confidence cohort/);
   assert.match(markdown, /## Competitive shape/);
   assert.match(markdown, /## Reliability \/ friction/);
   assert.match(markdown, /## Decision gates/);
