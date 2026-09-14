@@ -17,6 +17,7 @@
     "test:e2e": "playwright test",
     "simulate": "npm run build:engine && node scripts/simulate.mjs",
     "analyze:gameplay": "npm run build:engine && node scripts/analyze-gameplay.mjs",
+    "smoke:production": "node scripts/smoke-production.mjs",
     "check": "npm test && npm run simulate -- --games 1000 --seed demo"
   },
   "dependencies": {
