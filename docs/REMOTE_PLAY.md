@@ -40,7 +40,25 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The remote integration suite runs inside Cloudflare's Workers Vitest runtime. It covers room creation, simultaneous private actions, authorization, redaction, bot difficulty, recovery, rematches, a complete verdict, protocol health, and expiry alarms. The Playwright smoke test checks the local flow at a mobile viewport and verifies that full Case-card rules are visible during both splitting and choosing.
+The remote integration suite runs inside Cloudflare's Workers Vitest runtime. It covers room creation, simultaneous private actions, authorization, redaction, bot difficulty, recovery, rematches, a complete verdict, protocol health, expiry alarms, and privacy-safe playtest telemetry. The Playwright smoke test checks the local flow at a mobile viewport and verifies that full Case-card rules are visible during both splitting and choosing.
+
+`npm run smoke:production` is the live end-to-end deployment check. It verifies the deployed Pages HTML, confirms the deployed JavaScript bundle points at the production Worker, checks production CORS plus protocol/schema health, creates a real room, reads its lobby and authenticated state, and closes it again. The normal `main` deployment runs this command immediately after Pages finishes deploying. Smoke rooms use a reserved test name and are excluded from playtest summaries.
+
+## Playtest telemetry
+
+Cloudflare Worker observability is enabled in `wrangler.jsonc`. Remote rooms emit a single structured `split_decision_playtest_summary` JSON log when a real match reaches a verdict or when a room is abandoned. The telemetry wrapper is separate from the authoritative game-server implementation so instrumentation cannot change rules resolution.
+
+The summary includes only aggregate playtest signals:
+
+- room and game duration plus accumulated phase duration
+- human action counts and decision-time aggregates by action type
+- resolved Case action and Issue-selection counts
+- Citation target count and first/second companion-position counts
+- seat recovery/replacement, bot replacement, host-transfer, and reconnect/resume counts
+- Hearing count, side-tiebreak count, close-margin count, and total margin
+- final verdict tiebreak categories for completed games
+
+The summary deliberately excludes player names, room codes, recovery/session tokens, seeds, full action payloads, per-player timing, and canonical hidden game state. The existing completion log still records aggregate Specialty outcomes after the verdict, when those choices are no longer secret.
 
 ## Operations and recovery
 
@@ -52,5 +70,4 @@ The remote integration suite runs inside Cloudflare's Workers Vitest runtime. It
 - The Worker permits browser requests from `https://splitdecision.planitnow.us` and local development origins. Update `FRONTEND_ORIGIN` in `wrangler.jsonc` if the production frontend moves.
 - Inactive room data expires after 30 days. There is no permanent account or match-history database in this version.
 - Protocol v2 deliberately expires stored v1 rooms because their game-state shape is incompatible with corrected Specialty scoring windows. Players should create a new room after this upgrade.
-- Completed remote games emit one privacy-safe structured Worker log with aggregate per-seat Specialty offers, selection, use, bonus, and win outcome. It excludes player names, room codes, tokens, and seeds.
-- Merging to `main` deploys the Worker first, verifies `GET /api/health`, and only then deploys Pages. If the health check fails, the public frontend remains on the prior compatible version. The Worker-only workflow remains available for recovery.
+- Merging to `main` deploys the Worker first, verifies `GET /api/health`, deploys Pages, then runs the live production smoke. If the Worker health check fails, the public frontend remains on the prior compatible version. If the final smoke fails, the deployment run is marked failed so the production mismatch is visible immediately. The Worker-only workflow remains available for recovery.
