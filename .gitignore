@@ -7,3 +7,5 @@ node_modules/
 web-dist/
 .wrangler/
 .dev.vars
+playtest-*.ndjson
+playtest-*.jsonl
