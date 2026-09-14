@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "split-decision-remote",
-  "main": "worker/src/index.ts",
+  "main": "worker/src/instrumented.ts",
   "compatibility_date": "2026-08-28",
   "compatibility_flags": ["nodejs_compat"],
   "durable_objects": {
