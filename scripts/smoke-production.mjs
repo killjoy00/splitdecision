@@ -42,6 +42,18 @@ async function jsonOk(url, options = {}) {
   return { response, result };
 }
 
+function leaveRequest(token) {
+  return {
+    method: 'POST',
+    headers: {
+      Origin: ORIGIN,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({}),
+  };
+}
+
 let session = null;
 let cleanedUp = false;
 
@@ -113,25 +125,19 @@ try {
   assert(state.result.value?.protocolVersion === PROTOCOL_VERSION, 'authenticated state protocol mismatch');
   assert(state.result.value?.seat === 'P1', 'authenticated state returned the wrong seat');
 
-  const left = await jsonOk(`${API_URL}/api/rooms/${session.code}/leave`, {
-    method: 'POST',
-    headers: {
-      Origin: ORIGIN,
-      Authorization: `Bearer ${session.token}`,
-    },
-  });
+  const left = await jsonOk(
+    `${API_URL}/api/rooms/${session.code}/leave`,
+    leaveRequest(session.token),
+  );
   assert(left.result.value?.closed === true, 'smoke room did not cleanly close after the host left');
   cleanedUp = true;
 
   console.log('Production smoke passed: frontend, bundle wiring, CORS, health, room creation, lobby, auth, and cleanup.');
 } finally {
   if (session && !cleanedUp) {
-    await fetch(`${API_URL}/api/rooms/${session.code}/leave`, {
-      method: 'POST',
-      headers: {
-        Origin: ORIGIN,
-        Authorization: `Bearer ${session.token}`,
-      },
-    }).catch(() => undefined);
+    await fetch(
+      `${API_URL}/api/rooms/${session.code}/leave`,
+      leaveRequest(session.token),
+    ).catch(() => undefined);
   }
 }
