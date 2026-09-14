@@ -6,7 +6,7 @@ The static React app remains on GitHub Pages at `splitdecision.planitnow.us`. Th
 
 ## One-time Cloudflare and GitHub setup
 
-1. In Cloudflare, open **My Profile → API Tokens → Create Token** and start with the **Edit Cloudflare Workers** template. Limit the token to the account that owns `planitnow.us`.
+1. In Cloudflare, open **My Profile → API Tokens → Create Token** and start with the **Edit Cloudflare Workers** template. Limit the token to the account that owns `planitnow.us`. The token used by GitHub also needs **Workers Observability Write** so the automated playtest report can query stored Worker logs.
 2. Copy the token when Cloudflare shows it. It is only displayed once.
 3. Copy the account ID from the Cloudflare dashboard. It appears on the account or zone overview page.
 4. In GitHub, open `killjoy00/splitdecision` and go to **Settings → Secrets and variables → Actions**.
@@ -60,38 +60,17 @@ The summary includes only aggregate playtest signals:
 
 The summary deliberately excludes player names, room codes, recovery/session tokens, seeds, full action payloads, per-player timing, and canonical hidden game state. The existing completion log still records aggregate Specialty outcomes after the verdict, when those choices are no longer secret.
 
-### Generate a playtest report
+### Automated playtest report
 
-The repository includes a report command that turns exported Worker logs into a compact Markdown or JSON playtest report. It accepts raw JSON, NDJSON, copied console lines, or nested Cloudflare log-export objects and ignores unrelated log entries.
+No manual log export or report command is part of the normal workflow. `.github/workflows/playtest-report.yml` runs every six hours and can also be triggered manually for verification. It:
 
-For a live playtest session, capture the Worker tail while people play:
+1. queries Cloudflare Workers Observability for `split_decision_playtest_summary` events from the previous 72 hours;
+2. strips Cloudflare request metadata and keeps only the privacy-safe summary plus an event ID used for deduplication;
+3. merges new summaries into `data/telemetry-summaries.json`, preserving cumulative history beyond Cloudflare's normal log-retention window;
+4. regenerates `docs/PLAYTEST_REPORT.md` using the two-or-more-human mechanics cohort; and
+5. commits the report only when the stored telemetry actually changes.
 
-```bash
-npx wrangler tail split-decision-remote --format json > playtest-2026-09-14.ndjson
-```
-
-Stop the tail after the session, then generate the report:
-
-```bash
-npm run report:playtest -- playtest-2026-09-14.ndjson --out playtest-report.md
-```
-
-For historical sessions, export or copy the relevant Worker observability log results from Cloudflare after filtering for `split_decision_playtest_summary`, save them to a local file, and pass that file to the same command.
-
-Useful options:
-
-```bash
-# Exclude solo-with-bots games from mechanics/pacing analysis, while still counting all lifecycle/abandonment summaries.
-npm run report:playtest -- playtest.ndjson --min-humans 2
-
-# Machine-readable output for deeper analysis.
-npm run report:playtest -- playtest.ndjson --format json --out playtest-report.json
-
-# Pipe logs directly through stdin.
-cat playtest.ndjson | npm run report:playtest -- -
-```
-
-The Markdown report focuses on the decisions most likely to matter after early human tests:
+The report focuses on the decisions most likely to matter after early human tests:
 
 - completion/abandonment rate and abandonment reasons
 - human-seat mix so bot-heavy sessions are visible
@@ -104,7 +83,9 @@ The Markdown report focuses on the decisions most likely to matter after early h
 - reconnects, seat recovery, bot replacement, and host-transfer friction
 - evidence gates that label the sample **EARLY**, **DIRECTIONAL**, or **STABLE** and avoid recommending balance changes from tiny samples
 
-The current evidence gates treat fewer than 10 completed multiplayer games as early, 10–24 as directional, and 25+ as stable. Citation and Second Chair each need at least 10 observed human uses before the report marks them ready for a directional review. These are evidence-quality gates, not automatic balance targets.
+The current evidence gates treat fewer than 10 qualifying completed multiplayer games as early, 10–24 as directional, and 25+ as stable. Citation and Second Chair each need at least 10 observed human uses before the report marks them ready for a directional review. These are evidence-quality gates, not automatic balance targets.
+
+The older `npm run report:playtest` command remains available only as a developer/debug fallback. It is not required for normal playtesting.
 
 ## Operations and recovery
 
