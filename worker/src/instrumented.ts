@@ -5,6 +5,7 @@ import { REMOTE_PROTOCOL_VERSION } from '../../src/remote/protocol.js';
 
 const TELEMETRY_KEY = 'playtest-telemetry-v1';
 const RECONNECT_GAP_MS = 15_000;
+const SMOKE_PLAYER_NAME = '__splitdecision_smoke__';
 
 type DurationStat = {
   count: number;
@@ -14,6 +15,7 @@ type DurationStat = {
 
 interface PlaytestTelemetry {
   version: 1;
+  isSmoke: boolean;
   roomCreatedAt: number;
   matchNumber: number;
   gameStartedAt: number | null;
@@ -42,9 +44,10 @@ interface PlaytestTelemetry {
   summaryLogged: boolean;
 }
 
-function initialTelemetry(now: number): PlaytestTelemetry {
+function initialTelemetry(now: number, isSmoke = false): PlaytestTelemetry {
   return {
     version: 1,
+    isSmoke,
     roomCreatedAt: now,
     matchNumber: 0,
     gameStartedAt: null,
@@ -118,7 +121,7 @@ function telemetryForGame(
   snapshot: RemotePlayerSnapshot,
   now: number,
 ): PlaytestTelemetry {
-  const base = initialTelemetry(previous?.roomCreatedAt ?? now);
+  const base = initialTelemetry(previous?.roomCreatedAt ?? now, previous?.isSmoke ?? false);
   const game = snapshot.game;
   base.matchNumber = (previous?.matchNumber ?? 0) + 1;
   base.gameStartedAt = now;
@@ -160,6 +163,10 @@ function logSummary(
   now: number,
 ): void {
   if (telemetry.summaryLogged) return;
+  if (telemetry.isSmoke) {
+    telemetry.summaryLogged = true;
+    return;
+  }
   finalizeCurrentPhase(telemetry, now);
   const game = snapshot?.game ?? null;
   console.log(JSON.stringify({
@@ -271,7 +278,10 @@ export class GameRoom extends BaseGameRoom {
     const result = await super.initialize(code, nameValue);
     if (result.ok) {
       this.lastSeenAt.clear();
-      await this.writeTelemetry(initialTelemetry(Date.now()));
+      await this.writeTelemetry(initialTelemetry(
+        Date.now(),
+        nameValue === SMOKE_PLAYER_NAME,
+      ));
     }
     return result;
   }
