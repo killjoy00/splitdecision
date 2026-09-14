@@ -60,6 +60,52 @@ The summary includes only aggregate playtest signals:
 
 The summary deliberately excludes player names, room codes, recovery/session tokens, seeds, full action payloads, per-player timing, and canonical hidden game state. The existing completion log still records aggregate Specialty outcomes after the verdict, when those choices are no longer secret.
 
+### Generate a playtest report
+
+The repository includes a report command that turns exported Worker logs into a compact Markdown or JSON playtest report. It accepts raw JSON, NDJSON, copied console lines, or nested Cloudflare log-export objects and ignores unrelated log entries.
+
+For a live playtest session, capture the Worker tail while people play:
+
+```bash
+npx wrangler tail split-decision-remote --format json > playtest-2026-09-14.ndjson
+```
+
+Stop the tail after the session, then generate the report:
+
+```bash
+npm run report:playtest -- playtest-2026-09-14.ndjson --out playtest-report.md
+```
+
+For historical sessions, export or copy the relevant Worker observability log results from Cloudflare after filtering for `split_decision_playtest_summary`, save them to a local file, and pass that file to the same command.
+
+Useful options:
+
+```bash
+# Exclude solo-with-bots games from mechanics/pacing analysis, while still counting all lifecycle/abandonment summaries.
+npm run report:playtest -- playtest.ndjson --min-humans 2
+
+# Machine-readable output for deeper analysis.
+npm run report:playtest -- playtest.ndjson --format json --out playtest-report.json
+
+# Pipe logs directly through stdin.
+cat playtest.ndjson | npm run report:playtest -- -
+```
+
+The Markdown report focuses on the decisions most likely to matter after early human tests:
+
+- completion/abandonment rate and abandonment reasons
+- human-seat mix so bot-heavy sessions are visible
+- completed-game median and P90 duration
+- Case-action mix, including Citation and Second Chair usage
+- Issue-selection mix
+- Citation companion-target split
+- phase duration and human decision timing
+- plaintiff/defense verdict split, Hearing margins, close Hearings, and tiebreak frequency
+- reconnects, seat recovery, bot replacement, and host-transfer friction
+- evidence gates that label the sample **EARLY**, **DIRECTIONAL**, or **STABLE** and avoid recommending balance changes from tiny samples
+
+The current evidence gates treat fewer than 10 completed multiplayer games as early, 10–24 as directional, and 25+ as stable. Citation and Second Chair each need at least 10 observed human uses before the report marks them ready for a directional review. These are evidence-quality gates, not automatic balance targets.
+
 ## Operations and recovery
 
 - Room tokens are generated in the browser session response and stored only in that browser's local storage. Normal invite links contain the room code, not a seat token.
